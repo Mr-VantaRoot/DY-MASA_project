@@ -1,5 +1,6 @@
 import json
 import asyncio
+import time
 from pathlib import Path
 from threading import Thread
 
@@ -40,6 +41,8 @@ from app.services.job_service import JobRunner, JobService
 
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
+TERMINAL_EVENT_STAGES = frozenset({"job_completed", "job_failed", "job_cancelled"})
+TERMINAL_EVENT_GRACE_SECONDS = 2.0
 
 
 def _resolve_storage_file(path: Path, storage_root: Path, resource_name: str) -> Path:
@@ -139,11 +142,12 @@ def stream_job_events(
     async def event_stream() -> object:
         last_event_id = 0
         terminal_event_seen = False
+        terminal_deadline: float | None = None
         initial_events = job_event_store.snapshot(job_id)
         for event in initial_events:
             payload = json.dumps(as_event_payload(event))
             last_event_id = max(last_event_id, event.event_id)
-            terminal_event_seen = terminal_event_seen or event.stage.startswith("job_")
+            terminal_event_seen = terminal_event_seen or event.stage in TERMINAL_EVENT_STAGES
             yield f"data: {payload}\n\n"
 
         while True:
@@ -154,7 +158,7 @@ def stream_job_events(
             for event in new_events:
                 payload = json.dumps(as_event_payload(event))
                 last_event_id = max(last_event_id, event.event_id)
-                terminal_event_seen = terminal_event_seen or event.stage.startswith("job_")
+                terminal_event_seen = terminal_event_seen or event.stage in TERMINAL_EVENT_STAGES
                 yield f"data: {payload}\n\n"
             with SessionLocal() as state_db:
                 job = state_db.get(AnalysisJob, job_id)
@@ -165,7 +169,11 @@ def stream_job_events(
                 AnalysisJobStatus.failed,
                 AnalysisJobStatus.cancelled,
             }:
-                if not terminal_event_seen:
+                if terminal_event_seen:
+                    return
+                if terminal_deadline is None:
+                    terminal_deadline = time.monotonic() + TERMINAL_EVENT_GRACE_SECONDS
+                elif time.monotonic() >= terminal_deadline:
                     fallback = JobStageEvent(
                         event_id=last_event_id + 1,
                         stage=f"job_{job.status.value}",
@@ -174,7 +182,7 @@ def stream_job_events(
                         detail=job.error_message,
                     )
                     yield f"data: {json.dumps(as_event_payload(fallback))}\n\n"
-                return
+                    return
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

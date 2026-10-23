@@ -132,7 +132,8 @@ class ConfirmedBugTests(unittest.TestCase):
             state_db.get.return_value = terminal_job
             job_event_store.clear(terminal_id)
             with patch("app.api.routes.jobs.SessionLocal", return_value=session), \
-                patch("app.api.routes.jobs.asyncio.sleep", new=AsyncMock()):
+                patch("app.api.routes.jobs.asyncio.sleep", new=AsyncMock()), \
+                patch("app.api.routes.jobs.TERMINAL_EVENT_GRACE_SECONDS", 0.0):
                 response = stream_job_events(terminal_id, db=initial_db, settings=Settings())
 
                 async def collect_terminal() -> list[bytes]:
@@ -142,6 +143,62 @@ class ConfirmedBugTests(unittest.TestCase):
             self.assertEqual(len(terminal_chunks), 1)
             self.assertIn(f"job_{terminal_status.value}", terminal_chunks[0])
             job_event_store.clear(terminal_id)
+
+    def test_sse_job_started_then_each_terminal_event_preserves_order(self) -> None:
+        for terminal_status in (AnalysisJobStatus.completed, AnalysisJobStatus.failed, AnalysisJobStatus.cancelled):
+            job_id = f"ordered-{terminal_status.value}"
+            job = SimpleNamespace(status=terminal_status, current_step="Finished", error_message=None)
+            initial_db = MagicMock()
+            initial_db.get.return_value = job
+            state_db = MagicMock()
+            state_db.get.return_value = job
+            session = MagicMock()
+            session.__enter__.return_value = state_db
+            session.__exit__.return_value = False
+            job_event_store.clear(job_id)
+            emit_job_event(job_id, "job_started", "running", "Started")
+            emit_job_event(job_id, f"job_{terminal_status.value}", terminal_status.value, "Finished")
+            with patch("app.api.routes.jobs.SessionLocal", return_value=session), \
+                patch("app.api.routes.jobs.asyncio.sleep", new=AsyncMock()):
+                response = stream_job_events(job_id, db=initial_db, settings=Settings())
+
+                async def collect_ordered() -> list[bytes]:
+                    return [chunk async for chunk in response.body_iterator]
+
+                chunks = asyncio.run(collect_ordered())
+            self.assertEqual(len(chunks), 2)
+            self.assertIn("job_started", chunks[0])
+            self.assertIn(f"job_{terminal_status.value}", chunks[1])
+            job_event_store.clear(job_id)
+
+    def test_sse_waits_for_event_published_after_terminal_database_state(self) -> None:
+        job_id = "database-before-event"
+        job = SimpleNamespace(status=AnalysisJobStatus.failed, current_step="Failed", error_message="failure")
+        initial_db = MagicMock()
+        initial_db.get.return_value = job
+        state_db = MagicMock()
+        state_db.get.return_value = job
+        session = MagicMock()
+        session.__enter__.return_value = state_db
+        session.__exit__.return_value = False
+        job_event_store.clear(job_id)
+        emit_job_event(job_id, "job_started", "running", "Started")
+
+        async def publish_after_database_state(_delay: float) -> None:
+            emit_job_event(job_id, "job_failed", "failed", "Failed", "failure")
+
+        with patch("app.api.routes.jobs.SessionLocal", return_value=session), \
+            patch("app.api.routes.jobs.asyncio.sleep", new=publish_after_database_state):
+            response = stream_job_events(job_id, db=initial_db, settings=Settings())
+
+            async def collect_race() -> list[bytes]:
+                return [chunk async for chunk in response.body_iterator]
+
+            chunks = asyncio.run(collect_race())
+        self.assertEqual(len(chunks), 2)
+        self.assertIn("job_started", chunks[0])
+        self.assertIn("job_failed", chunks[1])
+        job_event_store.clear(job_id)
 
     def test_report_download_resolution_rejects_outside_and_symlink_paths(self) -> None:
         with TemporaryDirectory() as temp:
