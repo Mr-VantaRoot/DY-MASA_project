@@ -93,11 +93,15 @@ class EvidenceFindingGenerator:
 
     def _exported_component_findings(self, evidence: list[AnalysisEvidence]) -> list[FindingCandidate]:
         components = []
+        launcher_entries = []
         for item in evidence:
             if item.category.value != "component":
                 continue
             value = self._value(item)
-            if value.get("exported") == "true":
+            if value.get("launcher_entry") is True:
+                launcher_entries.append((str(value.get("component_type") or "component"), item, value))
+                continue
+            if value.get("exported_effective") is True or value.get("exported") == "true":
                 components.append((str(value.get("component_type") or "component"), item, value))
 
         findings: list[FindingCandidate] = []
@@ -125,6 +129,24 @@ class EvidenceFindingGenerator:
                     ),
                     remediation="Review each exported component for intended inter-app access, intent input validation, authorization checks, and sensitive data exposure.",
                     evidence_ids=[row[1].id for row in group],
+                )
+            )
+        if launcher_entries:
+            labels = [str(row[2].get("name") or row[1].label) for row in launcher_entries]
+            findings.append(
+                FindingCandidate(
+                    rule_id="android-launcher-entry-points",
+                    title=f"{len(launcher_entries)} launcher entry point(s) declared",
+                    severity=FindingSeverity.info,
+                    category="Exported Components",
+                    description=self._with_metadata(
+                        f"Launcher entry point(s) are available for normal application startup: {', '.join(labels)}.",
+                        "Informational because launcher exposure is expected for an application entry point and is excluded from the unprotected exported-component finding.",
+                        "MASVS-PLATFORM",
+                        "0.0",
+                    ),
+                    remediation="Confirm that the launcher entry point performs appropriate authentication and input validation before exposing sensitive functionality.",
+                    evidence_ids=[row[1].id for row in launcher_entries],
                 )
             )
         return findings
@@ -451,7 +473,7 @@ class EvidenceFindingGenerator:
 
     @staticmethod
     def _with_metadata(statement: str, rationale: str, masvs: str, cvss: str) -> str:
-        return f"{statement} Severity rationale: {rationale} MASVS/MSTG mapping: {masvs}. CVSS v3.1 estimate: {cvss}."
+        return f"{statement} Severity rationale: {rationale} MASVS/MSTG mapping: {masvs}. Heuristic score (not a calculated CVSS vector): {cvss}."
 
     @staticmethod
     def _value(item: AnalysisEvidence) -> dict[str, object]:

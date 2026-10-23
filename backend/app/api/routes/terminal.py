@@ -5,12 +5,14 @@ import tempfile
 import os
 import sys
 import shlex
+import hmac
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.core.config import PROJECT_ROOT
+from app.core.config import Settings, get_settings
 
 
 router = APIRouter(prefix="/terminal", tags=["terminal"])
@@ -43,8 +45,6 @@ class LocalTerminal:
         "find", "sort", "cut", "tr", "sed", "awk", "wc", "date", "file",
         "git", "python", "python3", "pgcli", "psql", "adb", "java",
     }
-    # Temporary compatibility path requested for the Fedora demo terminal.
-    ALLOWED_EXTERNAL_ROOTS = (Path("/usr/bin"),)
     CWD_MARKER = "__CODEX_TERMINAL_CWD__"
     EXIT_MARKER = "__CODEX_TERMINAL_EXIT__"
 
@@ -140,8 +140,6 @@ class LocalTerminal:
                 if not candidate.startswith(("/", "./", "../")):
                     continue
                 path = Path(candidate)
-                if index == 0 and path.is_absolute() and path.name.lower() in self.SAFE_SYSTEM_EXECUTABLES:
-                    continue
                 resolved = path.resolve() if path.is_absolute() else (working_directory / path).resolve()
                 if not self._is_allowed_path(resolved):
                     raise HTTPException(
@@ -154,7 +152,7 @@ class LocalTerminal:
             path.relative_to(self.default_cwd)
             return True
         except ValueError:
-            return any(root.exists() and path == root or root.exists() and root in path.parents for root in self.ALLOWED_EXTERNAL_ROOTS)
+            return False
 
     def _resolve_cwd(self, cwd: str | None) -> Path:
         if cwd:
@@ -173,7 +171,7 @@ class LocalTerminal:
         if not self._is_allowed_path(resolved):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Working directory must remain inside MASA or the temporarily allowed /usr/bin path.",
+                detail="Working directory must remain inside the MASA project root.",
             )
         return resolved
 
@@ -251,6 +249,14 @@ def get_terminal() -> LocalTerminal:
 
 
 @router.post("/run", response_model=TerminalCommandResponse)
-def run_terminal_command(request: TerminalCommandRequest) -> TerminalCommandResponse:
+def run_terminal_command(
+    request: TerminalCommandRequest,
+    terminal_token: str | None = Header(default=None, alias="X-Terminal-Token"),
+    settings: Settings = Depends(get_settings),
+) -> TerminalCommandResponse:
+    if not settings.enable_terminal:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Terminal is disabled.")
+    if not settings.terminal_token or not terminal_token or not hmac.compare_digest(terminal_token, settings.terminal_token):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="A valid X-Terminal-Token is required.")
     terminal = get_terminal()
     return terminal.run(request.command, request.cwd, request.previous_cwd)

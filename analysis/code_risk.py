@@ -97,6 +97,13 @@ class CodeRiskEvidenceExtractor:
     MAX_FILE_BYTES = 1024 * 1024
     MAX_EVIDENCE_PER_RULE = 12
 
+    def __init__(self) -> None:
+        self.limit_metadata = {
+            "max_evidence_per_rule": self.MAX_EVIDENCE_PER_RULE,
+            "emitted_by_rule": {},
+            "truncated_rules": [],
+        }
+
     def extract(self, *roots: Path) -> list[EvidenceItem]:
         evidence: list[EvidenceItem] = []
         seen_per_rule: dict[str, int] = {}
@@ -109,6 +116,7 @@ class CodeRiskEvidenceExtractor:
                 if path.stat().st_size > self.MAX_FILE_BYTES:
                     continue
                 evidence.extend(self._scan_file(path, seen_per_rule))
+        self.limit_metadata["emitted_by_rule"] = dict(seen_per_rule)
         return evidence
 
     def _scan_file(self, path: Path, seen_per_rule: dict[str, int]) -> list[EvidenceItem]:
@@ -123,12 +131,15 @@ class CodeRiskEvidenceExtractor:
             if not stripped:
                 continue
             for rule in self.RULES:
-                if seen_per_rule.get(rule.evidence_type, 0) >= self.MAX_EVIDENCE_PER_RULE:
-                    continue
                 match = rule.pattern.search(stripped)
                 if not match:
                     continue
                 if self._should_ignore_match(path, rule, match.group(0)):
+                    continue
+                if seen_per_rule.get(rule.evidence_type, 0) >= self.MAX_EVIDENCE_PER_RULE:
+                    truncated_rules = self.limit_metadata["truncated_rules"]
+                    if rule.evidence_type not in truncated_rules:
+                        truncated_rules.append(rule.evidence_type)
                     continue
                 seen_per_rule[rule.evidence_type] = seen_per_rule.get(rule.evidence_type, 0) + 1
                 results.append(

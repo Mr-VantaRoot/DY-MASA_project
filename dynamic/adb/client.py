@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 import subprocess
 import sys
 import time
 import zlib
 import shutil
+import re
+from typing import ClassVar
 
 
 @dataclass(frozen=True)
@@ -15,6 +18,7 @@ class AdbResult:
     exit_code: int
     stdout: str
     stderr: str
+    logcat_format: str | None = None
 
     @property
     def ok(self) -> bool:
@@ -47,32 +51,32 @@ class StorageBreakdown:
 
 
 class AdbClient:
-    _BLOCKED_OPERATIONS = (
-        "uninstall",
-        "pm clear",
-        "pm uninstall",
-        "wipe-data",
-        "factory-reset",
-        "format",
-        "rm -rf",
-    )
+    _DESTRUCTIVE_TOP_LEVEL: ClassVar[set[str]] = {"uninstall", "wipe-data", "factory-reset", "format"}
+    _DESTRUCTIVE_SHELL: ClassVar[set[tuple[str, ...]]] = {
+        ("pm", "clear"),
+        ("pm", "uninstall"),
+        ("rm", "-rf"),
+    }
 
-    def __init__(self, adb_path: Path, default_timeout: int = 60) -> None:
+    def __init__(self, adb_path: Path, default_timeout: int = 60, command_log: list[dict[str, object]] | None = None) -> None:
         discovered = shutil.which("adb") if not adb_path.exists() else None
         self.adb_path = Path(discovered) if discovered else adb_path
         self.default_timeout = default_timeout
+        self.command_log = command_log
 
     def available(self) -> bool:
         return self.adb_path.exists()
 
     def run(self, args: list[str], timeout: int | None = None, device: str | None = None) -> AdbResult:
-        requested = " ".join(args).lower()
-        blocked = next((operation for operation in self._BLOCKED_OPERATIONS if operation in requested), None)
+        blocked = self._blocked_operation(args)
         if blocked:
             command = [str(self.adb_path), *( ["-s", device] if device else [] ), *args]
+            self._audit(command, 126, 0.0)
             return AdbResult(command, 126, "", f"Blocked destructive ADB operation: {blocked}")
         if not self.available():
-            return AdbResult([str(self.adb_path), *args], 127, "", f"Missing adb executable: {self.adb_path}")
+            command = [str(self.adb_path), *args]
+            self._audit(command, 127, 0.0)
+            return AdbResult(command, 127, "", f"Missing adb executable: {self.adb_path}")
 
         command = [str(self.adb_path)]
         if device:
@@ -89,6 +93,7 @@ class AdbClient:
             creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
 
         process = None
+        started = time.monotonic()
         try:
             process = subprocess.Popen(
                 command,
@@ -99,7 +104,9 @@ class AdbClient:
                 creationflags=creationflags,
             )
             stdout, stderr = process.communicate(timeout=timeout)
-            return AdbResult(command, process.returncode, stdout.strip(), stderr.strip())
+            result = AdbResult(command, process.returncode, stdout, stderr)
+            self._audit(command, result.exit_code, time.monotonic() - started)
+            return result
         except subprocess.TimeoutExpired:
             if process is not None:
                 self._terminate_process(process)
@@ -111,9 +118,40 @@ class AdbClient:
                 message = f"{message}{chr(10)}ADB command timed out and was terminated."
             else:
                 message = "ADB command timed out and was terminated."
-            return AdbResult(command, -1, (stdout or "").strip(), message)
+            result = AdbResult(command, -1, stdout or "", message)
+            self._audit(command, result.exit_code, time.monotonic() - started)
+            return result
         except OSError as exc:
-            return AdbResult(command, 127, "", str(exc))
+            result = AdbResult(command, 127, "", str(exc))
+            self._audit(command, result.exit_code, time.monotonic() - started)
+            return result
+
+    def _audit(self, command: list[str], exit_code: int, duration: float) -> None:
+        if self.command_log is not None:
+            self.command_log.append({
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "argv": command,
+                "exit_code": exit_code,
+                "duration_seconds": round(duration, 6),
+            })
+
+    @classmethod
+    def _blocked_operation(cls, args: list[str]) -> str | None:
+        tokens = [str(arg).lower() for arg in args]
+        if not tokens:
+            return None
+        first = next((token for token in tokens if not token.startswith("-")), "")
+        if first in cls._DESTRUCTIVE_TOP_LEVEL:
+            return first
+        if first != "shell":
+            return None
+        remote = tuple(token for token in tokens[1:] if token not in {"--"})
+        for operation in cls._DESTRUCTIVE_SHELL:
+            if remote[: len(operation)] == operation:
+                return " ".join(operation)
+        if remote and remote[0] in cls._DESTRUCTIVE_TOP_LEVEL:
+            return remote[0]
+        return None
 
     @staticmethod
     def _terminate_process(process: subprocess.Popen[str]) -> None:
@@ -149,20 +187,24 @@ class AdbClient:
         result = self.shell(["df", "-k", "/data", "/data/local/tmp"], device=device, timeout=timeout)
         return result.stdout or result.stderr
 
-    def storage_breakdown(self, device: str, timeout: int = 20) -> StorageBreakdown:
+    def storage_breakdown(self, device: str, timeout: int = 20, scan_personal: bool = False) -> StorageBreakdown:
         """Read storage metadata only; never reads file contents or changes the device."""
         volume_result = self.shell(["df", "-k", "/sdcard"], device=device, timeout=timeout)
         volume = self._parse_df(volume_result.stdout, "/sdcard")
 
         # Android exposes shared storage through /sdcard. These common folders let us
         # provide a useful, privacy-preserving estimate without copying or opening files.
-        paths = [
-            "/sdcard/Movies",
-            "/sdcard/DCIM/Movies",
-            "/sdcard/Pictures",
-            "/sdcard/DCIM/Camera",
-            "/sdcard/DCIM",
-        ]
+        paths = []
+        if scan_personal:
+            paths = [
+                "/sdcard/Movies",
+                "/sdcard/DCIM/Movies",
+                "/sdcard/Pictures",
+                "/sdcard/DCIM/Camera",
+                "/sdcard/DCIM",
+            ]
+        if not paths:
+            return StorageBreakdown(volume, 0, 0, volume.used_bytes if volume else 0, [], None)
         result = self.shell(["du", "-sk", *paths], device=device, timeout=timeout)
         sizes: dict[str, int] = {}
         for line in result.stdout.splitlines():
@@ -227,6 +269,15 @@ class AdbClient:
     def start_activity(self, component: str, device: str, timeout: int = 30) -> AdbResult:
         return self.shell(["am", "start", "-W", "-n", component], device=device, timeout=timeout)
 
+    @staticmethod
+    def am_start_succeeded(result: AdbResult) -> bool:
+        output = f"{result.stdout}\n{result.stderr}"
+        if not result.ok:
+            return False
+        if re.search(r"(?im)^\s*Status:\s*ok\s*$", output):
+            return not re.search(r"(?i)Permission Denial|SecurityException|Error type\s+\d+|Error:\s*Activity class .*does not exist", output)
+        return False
+
     def resolve_service(self, component: str, device: str, timeout: int = 15) -> AdbResult:
         return self.shell(["cmd", "package", "resolve-service", "--brief", "-n", component], device=device, timeout=timeout)
 
@@ -243,8 +294,20 @@ class AdbClient:
     def clear_logcat(self, device: str) -> AdbResult:
         return self.run(["logcat", "-c"], timeout=15, device=device)
 
+    def dump_logcat_format(self, device: str, logcat_format: str, timeout: int = 30) -> AdbResult:
+        return self.run(["logcat", "-d", "-v", logcat_format, "-b", "all"], timeout=timeout, device=device)
+
     def dump_logcat(self, device: str, timeout: int = 30) -> AdbResult:
-        return self.run(["logcat", "-d", "-v", "time"], timeout=timeout, device=device)
+        for logcat_format in ("threadtime,uid,year", "threadtime", "time"):
+            result = self.dump_logcat_format(device, logcat_format, timeout)
+            if result.ok:
+                return AdbResult(result.command, result.exit_code, result.stdout, result.stderr, logcat_format)
+        return result
+
+    def log_marker(self, device: str, marker: str, timeout: int = 10) -> AdbResult:
+        if not re.fullmatch(r"[A-Za-z0-9_ .:-]+", marker):
+            return AdbResult([], 2, "", "Invalid DY-MASA marker text.")
+        return self.shell(["log", "-t", "DYMASA", "-p", "i", marker], device=device, timeout=timeout)
 
     def screenshot_png(self, device: str, output_path: Path, timeout: int = 30) -> AdbResult:
         output_path.parent.mkdir(parents=True, exist_ok=True)

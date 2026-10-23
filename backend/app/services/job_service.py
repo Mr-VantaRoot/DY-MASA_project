@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 import hashlib
+import json
 import shutil
 import zipfile
 
@@ -28,6 +29,7 @@ from app.db.base import (
     AnalysisReasoning,
     AnalysisReport,
     ArtifactType,
+    EvidenceCategory,
 )
 from app.services.job_control import JobCancelled, job_cancellation_registry
 from app.services.job_events import emit_job_event, job_event_store
@@ -63,7 +65,47 @@ def record_job_stage(
         db.commit()
 
 
-class JobService:
+class _JobStorageHelpers:
+    @staticmethod
+    def _load_evidence(db: Session, job: AnalysisJob) -> list[AnalysisEvidence]:
+        return list(db.scalars(select(AnalysisEvidence).where(AnalysisEvidence.job_id == job.id).order_by(AnalysisEvidence.created_at.asc())).all())
+
+    @staticmethod
+    def _load_findings(db: Session, job: AnalysisJob) -> list[AnalysisFinding]:
+        return list(db.scalars(select(AnalysisFinding).where(AnalysisFinding.job_id == job.id).order_by(AnalysisFinding.created_at.asc())).all())
+
+    @staticmethod
+    def _load_reasoning(db: Session, job: AnalysisJob) -> list[AnalysisReasoning]:
+        return list(db.scalars(select(AnalysisReasoning).where(AnalysisReasoning.job_id == job.id).order_by(AnalysisReasoning.created_at.asc())).all())
+
+    @staticmethod
+    def _record_report(db: Session, job: AnalysisJob, report_type: str, report_path: Path) -> None:
+        report = db.scalars(select(AnalysisReport).where(AnalysisReport.job_id == job.id, AnalysisReport.report_type == report_type).order_by(AnalysisReport.created_at.desc())).first()
+        if report is None:
+            db.add(AnalysisReport(job_id=job.id, report_type=report_type, path=str(report_path)))
+        else:
+            report.path = str(report_path)
+            report.created_at = datetime.utcnow()
+        db.commit()
+
+    def _cleanup_job_files(self, job_id: str, apk_path: Path | None, workspace_path: Path | None) -> None:
+        candidates = [apk_path, workspace_path, self._settings.report_dir / f"{job_id}.html", self._settings.report_dir / f"{job_id}.pdf"]
+        for candidate in candidates:
+            if candidate is not None:
+                self._remove_within_storage(candidate)
+
+    def _remove_within_storage(self, path: Path) -> None:
+        resolved = path.resolve()
+        storage_root = self._settings.storage_root.resolve()
+        if resolved != storage_root and storage_root not in resolved.parents:
+            return
+        if resolved.is_dir():
+            shutil.rmtree(resolved, ignore_errors=True)
+        else:
+            resolved.unlink(missing_ok=True)
+
+
+class JobService(_JobStorageHelpers):
     def __init__(self, db: Session, settings: Settings) -> None:
         self._db = db
         self._settings = settings
@@ -77,8 +119,19 @@ class JobService:
         stored_filename = f"{job_id}.apk"
         apk_path = self._settings.upload_dir / stored_filename
 
-        with apk_path.open("wb") as destination:
-            shutil.copyfileobj(upload.file, destination)
+        total_bytes = 0
+        try:
+            with apk_path.open("wb") as destination:
+                while chunk := upload.file.read(1024 * 1024):
+                    total_bytes += len(chunk)
+                    if total_bytes > self._settings.max_upload_bytes:
+                        raise ValueError(
+                            f"Uploaded APK exceeds the maximum size of {self._settings.max_upload_bytes} bytes."
+                        )
+                    destination.write(chunk)
+        except Exception:
+            apk_path.unlink(missing_ok=True)
+            raise
 
         job = self._create_job_record(job_id, original_filename, stored_filename, apk_path)
         record_job_stage(job, "upload_received", "completed", "Upload received and validated", f"Stored as {stored_filename}")
@@ -94,6 +147,8 @@ class JobService:
         job_id = str(uuid4())
         stored_filename = f"{job_id}.apk"
         apk_path = self._settings.upload_dir / stored_filename
+        if source_path.stat().st_size > self._settings.max_upload_bytes:
+            raise ValueError(f"APK exceeds the maximum size of {self._settings.max_upload_bytes} bytes.")
         shutil.copyfile(source_path, apk_path)
 
         job = self._create_job_record(job_id, source_path.name, stored_filename, apk_path)
@@ -165,72 +220,6 @@ class JobService:
         self._record_report(self._db, job, "pdf", pdf_report_path)
 
     @staticmethod
-    def _load_evidence(db: Session, job: AnalysisJob) -> list[AnalysisEvidence]:
-        return list(
-            db.scalars(
-                select(AnalysisEvidence)
-                .where(AnalysisEvidence.job_id == job.id)
-                .order_by(AnalysisEvidence.created_at.asc())
-            ).all()
-        )
-
-    @staticmethod
-    def _load_findings(db: Session, job: AnalysisJob) -> list[AnalysisFinding]:
-        return list(
-            db.scalars(
-                select(AnalysisFinding)
-                .where(AnalysisFinding.job_id == job.id)
-                .order_by(AnalysisFinding.created_at.asc())
-            ).all()
-        )
-
-    @staticmethod
-    def _load_reasoning(db: Session, job: AnalysisJob) -> list[AnalysisReasoning]:
-        return list(
-            db.scalars(
-                select(AnalysisReasoning)
-                .where(AnalysisReasoning.job_id == job.id)
-                .order_by(AnalysisReasoning.created_at.asc())
-            ).all()
-        )
-
-    @staticmethod
-    def _record_report(db: Session, job: AnalysisJob, report_type: str, report_path: Path) -> None:
-        report = db.scalars(
-            select(AnalysisReport)
-            .where(AnalysisReport.job_id == job.id, AnalysisReport.report_type == report_type)
-            .order_by(AnalysisReport.created_at.desc())
-        ).first()
-        if report is None:
-            db.add(AnalysisReport(job_id=job.id, report_type=report_type, path=str(report_path)))
-        else:
-            report.path = str(report_path)
-            report.created_at = datetime.utcnow()
-        db.commit()
-
-    def _cleanup_job_files(self, job_id: str, apk_path: Path | None, workspace_path: Path | None) -> None:
-        candidates = [
-            apk_path,
-            workspace_path,
-            self._settings.report_dir / f"{job_id}.html",
-            self._settings.report_dir / f"{job_id}.pdf",
-        ]
-        for candidate in candidates:
-            if candidate is None:
-                continue
-            self._remove_within_storage(candidate)
-
-    def _remove_within_storage(self, path: Path) -> None:
-        resolved = path.resolve()
-        storage_root = self._settings.storage_root.resolve()
-        if resolved != storage_root and storage_root not in resolved.parents:
-            return
-        if resolved.is_dir():
-            shutil.rmtree(resolved, ignore_errors=True)
-        else:
-            resolved.unlink(missing_ok=True)
-
-    @staticmethod
     def _validate_apk_filename(filename: str | None) -> None:
         if not filename:
             raise ValueError("Upload must include a filename.")
@@ -249,7 +238,7 @@ class JobService:
         return None
 
 
-class JobRunner:
+class JobRunner(_JobStorageHelpers):
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
 
@@ -379,12 +368,21 @@ class JobRunner:
     @staticmethod
     def _extract_evidence(decompilation: DecompilationOutputs) -> list[EvidenceItem]:
         evidence_items = ManifestEvidenceExtractor().extract(decompilation.apktool.output_path)
-        evidence_items.extend(
-            CodeSecretEvidenceExtractor().extract(decompilation.apktool.output_path, decompilation.jadx.output_path)
-        )
-        evidence_items.extend(
-            CodeRiskEvidenceExtractor().extract(decompilation.apktool.output_path, decompilation.jadx.output_path)
-        )
+        secret_extractor = CodeSecretEvidenceExtractor()
+        risk_extractor = CodeRiskEvidenceExtractor()
+        evidence_items.extend(secret_extractor.extract(decompilation.apktool.output_path, decompilation.jadx.output_path))
+        evidence_items.extend(risk_extractor.extract(decompilation.apktool.output_path, decompilation.jadx.output_path))
+        limits_path = decompilation.apktool.output_path.parent / "extraction-limits.json"
+        limits = {"code_secret": secret_extractor.limit_metadata, "code_risk": risk_extractor.limit_metadata}
+        limits_path.write_text(json.dumps(limits, indent=2, sort_keys=True), encoding="utf-8")
+        evidence_items.append(EvidenceItem(
+            category=EvidenceCategory.runtime,
+            evidence_type="extraction_limits",
+            label="Evidence extraction limits (informational)",
+            value={**limits, "note": "Limits are reported for transparency and do not create findings."},
+            source_path=limits_path,
+            source_node="extraction-limits.json",
+        ))
         evidence_items.extend(evidence_for_native_analysis(decompilation.ghidra))
         return evidence_items
 
@@ -410,7 +408,7 @@ class JobRunner:
         evidence: list[AnalysisEvidence],
         findings: list[AnalysisFinding],
     ) -> list[AnalysisReasoning]:
-        self._mark(db, job, AnalysisJobStatus.running, 99, "Generating deterministic AI reasoning")
+        self._mark(db, job, AnalysisJobStatus.running, 99, "Generating rule-based reasoning summary")
         reasoning = DeterministicReasoningEngine().reason(findings, evidence)
         self._record_reasoning(db, job, reasoning)
         return self._load_reasoning(db, job)
@@ -517,36 +515,6 @@ class JobRunner:
         db.refresh(job)
 
     @staticmethod
-    def _load_evidence(db: Session, job: AnalysisJob) -> list[AnalysisEvidence]:
-        return list(
-            db.scalars(
-                select(AnalysisEvidence)
-                .where(AnalysisEvidence.job_id == job.id)
-                .order_by(AnalysisEvidence.created_at.asc())
-            ).all()
-        )
-
-    @staticmethod
-    def _load_findings(db: Session, job: AnalysisJob) -> list[AnalysisFinding]:
-        return list(
-            db.scalars(
-                select(AnalysisFinding)
-                .where(AnalysisFinding.job_id == job.id)
-                .order_by(AnalysisFinding.created_at.asc())
-            ).all()
-        )
-
-    @staticmethod
-    def _load_reasoning(db: Session, job: AnalysisJob) -> list[AnalysisReasoning]:
-        return list(
-            db.scalars(
-                select(AnalysisReasoning)
-                .where(AnalysisReasoning.job_id == job.id)
-                .order_by(AnalysisReasoning.created_at.asc())
-            ).all()
-        )
-
-    @staticmethod
     def _record_findings(db: Session, job: AnalysisJob, findings: list[FindingCandidate]) -> None:
         for finding in findings:
             db.add(
@@ -577,40 +545,9 @@ class JobRunner:
         db.commit()
 
     @staticmethod
-    def _record_report(db: Session, job: AnalysisJob, report_type: str, report_path: Path) -> None:
-        report = db.scalars(
-            select(AnalysisReport)
-            .where(AnalysisReport.job_id == job.id, AnalysisReport.report_type == report_type)
-            .order_by(AnalysisReport.created_at.desc())
-        ).first()
-        if report is None:
-            db.add(AnalysisReport(job_id=job.id, report_type=report_type, path=str(report_path)))
-        else:
-            report.path = str(report_path)
-            report.created_at = datetime.utcnow()
-        db.commit()
-
-    @staticmethod
     def _raise_if_cancelled(job_id: str) -> None:
         if job_cancellation_registry.is_cancelled(job_id):
             raise JobCancelled("Analysis cancelled by user.")
-
-    def _cleanup_job_files(self, job_id: str, apk_path: Path | None, workspace_path: Path | None) -> None:
-        candidates = [apk_path, workspace_path, self._settings.report_dir / f"{job_id}.html", self._settings.report_dir / f"{job_id}.pdf"]
-        for candidate in candidates:
-            if candidate is None:
-                continue
-            self._remove_within_storage(candidate)
-
-    def _remove_within_storage(self, path: Path) -> None:
-        resolved = path.resolve()
-        storage_root = self._settings.storage_root.resolve()
-        if resolved != storage_root and storage_root not in resolved.parents:
-            return
-        if resolved.is_dir():
-            shutil.rmtree(resolved, ignore_errors=True)
-        else:
-            resolved.unlink(missing_ok=True)
 
     @staticmethod
     def _sha256(path: Path) -> str:
@@ -678,7 +615,10 @@ def cleanup_interrupted_jobs(settings: Settings) -> int:
                 )
             ).all()
         )
-        service = JobService(db, settings)
         for job in jobs:
-            service.delete_job(job.id)
+            job.status = AnalysisJobStatus.failed
+            job.error_message = "Interrupted by backend restart"
+            job.current_step = "Interrupted by backend restart"
+            job.updated_at = datetime.utcnow()
+        db.commit()
         return len(jobs)

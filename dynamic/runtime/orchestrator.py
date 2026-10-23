@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 import hashlib
 import json
+import re
 import time
 
 from sqlalchemy import select
@@ -15,6 +16,8 @@ from app.db.base import AnalysisArtifact, AnalysisEvidence, AnalysisFinding, Ana
 from app.services.job_events import emit_job_event
 from dynamic.adb.client import AdbClient, AdbResult
 from dynamic.emulator.manager import EmulatorManager
+from dynamic.logcat.classify import classify, code_risk_matches, discover_target_pids, merge_tiers_in_order
+from dynamic.logcat.crashes import detect_crashes
 
 
 @dataclass(frozen=True)
@@ -33,9 +36,10 @@ class DynamicAnalysisError(RuntimeError):
 
 
 class DynamicRuntimeOrchestrator:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, adb: AdbClient | None = None, manager: EmulatorManager | None = None) -> None:
         self.settings = settings
-        self.manager = EmulatorManager(
+        self.command_log: list[dict[str, object]] = []
+        self.manager = manager or EmulatorManager(
             sdk_path=settings.android_sdk_path,
             adb_path=settings.adb_path,
             emulator_path=settings.emulator_path,
@@ -43,7 +47,7 @@ class DynamicRuntimeOrchestrator:
             boot_timeout_seconds=settings.emulator_boot_timeout_seconds,
             avd_home=settings.android_avd_home,
         )
-        self.adb = AdbClient(settings.adb_path, settings.dynamic_timeout_seconds)
+        self.adb = adb or AdbClient(settings.adb_path, settings.dynamic_timeout_seconds, self.command_log)
 
     def run(self, db: Session, job: AnalysisJob) -> DynamicRunSummary:
         package_name = self._package_name(db, job.id)
@@ -62,6 +66,7 @@ class DynamicRuntimeOrchestrator:
 
         self._record_evidence(db, job, "dynamic_device", "Android runtime device", {
             "device": device.serial,
+            "device_type": "emulator" if device.serial.startswith("emulator-") else "physical",
             "android_version": self.adb.getprop("ro.build.version.release", device.serial),
             "sdk": self.adb.getprop("ro.build.version.sdk", device.serial),
             "model": self.adb.getprop("ro.product.model", device.serial),
@@ -69,6 +74,27 @@ class DynamicRuntimeOrchestrator:
             "result": "informational",
             "source": "adb",
         })
+
+        self._stage(db, job, "dynamic_baseline", "running", "Capturing baseline logcat", package_name)
+        self.adb.clear_logcat(device.serial)
+        time.sleep(self.settings.dynamic_baseline_seconds)
+        baseline = self.adb.dump_logcat(device.serial, timeout=45)
+        baseline_path = dynamic_dir / "baseline-logcat.txt"
+        self._write_preserving_bytes(baseline_path, baseline.stdout)
+        self._record_artifact(db, job, baseline_path, "adb-baseline-logcat", baseline.exit_code)
+        baseline_seed_pids = self._package_pids(device.serial, package_name)
+        baseline_capture = self._save_logcat_capture(db, job, dynamic_dir, baseline, package_name, baseline_seed_pids, "baseline")
+        self._record_evidence(db, job, "dynamic_baseline", "Baseline logcat captured", {
+            "path": str(baseline_path),
+            "tier_a_line_count": len(baseline_capture["tier_a"]),
+            "tier_b_line_count": len(baseline_capture["tier_b"]),
+            "tier_c_line_count": len(baseline_capture["tier_c"]),
+            "logcat_format": baseline.logcat_format,
+            "result": "confirmed" if baseline.ok else "not_reproducible",
+            "source": "adb logcat baseline",
+        })
+        self._stage(db, job, "dynamic_baseline", "completed", "Baseline logcat captured", str(baseline_path))
+        self.adb.clear_logcat(device.serial)
 
         self._stage(db, job, "dynamic_install", "running", "Installing APK into Android device", package_name)
         install = self.adb.install(self._apk_path(db, job), device.serial, timeout=self.settings.dynamic_timeout_seconds)
@@ -135,26 +161,37 @@ class DynamicRuntimeOrchestrator:
             self._stage(db, job, "dynamic_render", "failed", "Application UI was not rendered", screenshot.stderr or screenshot.stdout)
 
         self._stage(db, job, "dynamic_logcat", "running", "Collecting runtime logcat", package_name)
-        logcat = self.adb.dump_logcat(device.serial, timeout=45)
-        logcat_path = dynamic_dir / "logcat.txt"
-        logcat_path.write_text(logcat.stdout + ("\n[stderr]\n" + logcat.stderr if logcat.stderr else ""), encoding="utf-8", errors="ignore")
-        self._record_artifact(db, job, logcat_path, "adb-logcat")
-        filtered_lines = self._filter_logcat(logcat.stdout, package_name)
-        filtered_path = dynamic_dir / "logcat-filtered.txt"
-        filtered_path.write_text("\n".join(filtered_lines), encoding="utf-8", errors="ignore")
-        self._record_artifact(db, job, filtered_path, "adb-logcat-filtered")
+        launch_logcat = self.adb.dump_logcat(device.serial, timeout=45)
+        launch_seed_pids = self._package_pids(device.serial, package_name)
+        launch_capture = self._save_logcat_capture(
+            db, job, dynamic_dir, launch_logcat, package_name, launch_seed_pids, "launch"
+        )
         self._record_evidence(db, job, "dynamic_logcat", "Runtime logcat collected", {
             "package": package_name,
-            "line_count": len(logcat.stdout.splitlines()),
-            "package_related_line_count": len(filtered_lines),
-            "logcat_path": str(logcat_path),
-            "filtered_logcat_path": str(filtered_path),
-            "result": "confirmed" if logcat.ok else "not_reproducible",
-            "source": "adb logcat -d -v time",
+            "line_count": len(launch_logcat.stdout.splitlines()),
+            "tier_a_line_count": len(launch_capture["tier_a"]),
+            "tier_b_line_count": len(launch_capture["tier_b"]),
+            "tier_c_line_count": len(launch_capture["tier_c"]),
+            "package_related_line_count": len(launch_capture["tier_a"]) + len(launch_capture["tier_b"]),
+            "target_pids": launch_capture["pids"],
+            "target_uids": launch_capture["uids"],
+            "crash_events": launch_capture["crashes"],
+            "baseline_noise_count": {
+                "tier_a": len(baseline_capture["tier_a"]),
+                "tier_b": len(baseline_capture["tier_b"]),
+                "tier_c": len(baseline_capture["tier_c"]),
+            },
+            "logcat_format": launch_logcat.logcat_format,
+            "logcat_path": str(dynamic_dir / "logcat.txt"),
+            "filtered_logcat_path": str(dynamic_dir / "logcat-filtered.txt"),
+            "result": "confirmed" if launch_logcat.ok else "not_reproducible",
+            "source": "adb logcat capture",
         })
-        self._stage(db, job, "dynamic_logcat", "completed", "Runtime logcat collected", f"{len(filtered_lines)} package-related lines")
+        self._stage(db, job, "dynamic_logcat", "completed", "Runtime logcat collected", f"{len(launch_capture['tier_a']) + len(launch_capture['tier_b'])} target lines")
 
-        self._validate_static_attack_surface(db, job, device.serial, package_name, logcat.stdout, dynamic_dir)
+        self._validate_static_attack_surface(db, job, device.serial, package_name, dynamic_dir)
+        self._write_capture_metadata(db, job, dynamic_dir, device.serial, package_name, launch_capture, launch_logcat, baseline_capture)
+        self._write_adb_audit(db, job, dynamic_dir)
 
         return DynamicRunSummary(
             job_id=job.id,
@@ -264,13 +301,148 @@ class DynamicRuntimeOrchestrator:
         ))
         db.commit()
 
+    @staticmethod
+    def _write_preserving_bytes(path: Path, value: str) -> None:
+        path.write_bytes(value.encode("utf-8", errors="surrogateescape"))
+
+    @staticmethod
+    def _write_lines(path: Path, lines: list[str]) -> None:
+        content = "\n".join(lines) + ("\n" if lines else "")
+        DynamicRuntimeOrchestrator._write_preserving_bytes(path, content)
+
+    def _package_pids(self, device: str, package_name: str) -> list[int]:
+        result = self.adb.shell(["pidof", package_name], device=device, timeout=10)
+        return [int(value) for value in result.stdout.split() if value.isdigit()]
+
+    def _save_logcat_capture(
+        self,
+        db: Session,
+        job: AnalysisJob,
+        dynamic_dir: Path,
+        capture: AdbResult,
+        package_name: str,
+        seed_pids: list[int],
+        prefix: str,
+    ) -> dict[str, object]:
+        lines = capture.stdout.splitlines()
+        pids, uids = discover_target_pids(lines, package_name, seed_pids)
+        tier_a, tier_b, tier_c = classify(lines, package_name, pids, uids)
+        crashes = detect_crashes(lines, package_name, pids)
+        if prefix == "launch":
+            paths = {
+                "raw": dynamic_dir / "logcat.txt",
+                "stderr": dynamic_dir / "logcat-stderr.txt",
+                "filtered": dynamic_dir / "logcat-filtered.txt",
+                "tier_a": dynamic_dir / "logcat-tier-a.txt",
+                "tier_b": dynamic_dir / "logcat-tier-b.txt",
+                "tier_c": dynamic_dir / "logcat-tier-c.txt",
+            }
+            self._write_preserving_bytes(paths["raw"], capture.stdout)
+            self._write_preserving_bytes(paths["stderr"], capture.stderr)
+            self._write_lines(paths["filtered"], merge_tiers_in_order(lines, tier_a, tier_b))
+            self._write_lines(paths["tier_a"], tier_a)
+            self._write_lines(paths["tier_b"], tier_b)
+            self._write_lines(paths["tier_c"], tier_c)
+            for tool_name, path in (
+                ("adb-logcat", paths["raw"]),
+                ("adb-logcat-stderr", paths["stderr"]),
+                ("adb-logcat-filtered", paths["filtered"]),
+                ("adb-logcat-tier-a", paths["tier_a"]),
+                ("adb-logcat-tier-b", paths["tier_b"]),
+                ("adb-logcat-tier-c", paths["tier_c"]),
+            ):
+                self._record_artifact(db, job, path, tool_name, capture.exit_code)
+        return {
+            "tier_a": tier_a,
+            "tier_b": tier_b,
+            "tier_c": tier_c,
+            "pids": pids,
+            "uids": uids,
+            "crashes": crashes,
+            "lines": lines,
+        }
+
+    def _write_capture_metadata(
+        self,
+        db: Session,
+        job: AnalysisJob,
+        dynamic_dir: Path,
+        device: str,
+        package_name: str,
+        launch_capture: dict[str, object],
+        launch_logcat: AdbResult,
+        baseline_capture: dict[str, object],
+    ) -> None:
+        manifest = db.scalars(
+            select(AnalysisEvidence).where(
+                AnalysisEvidence.job_id == job.id,
+                AnalysisEvidence.evidence_type == "manifest_metadata",
+            )
+        ).first()
+        manifest_value: dict[str, object] = {}
+        if manifest:
+            try:
+                manifest_value = json.loads(manifest.value_json)
+            except json.JSONDecodeError:
+                pass
+        adb_version = self.adb.run(["version"], timeout=10)
+        sample_formats: list[str] = []
+        sample_dir = dynamic_dir / "logcat-samples"
+        sample_dir.mkdir(parents=True, exist_ok=True)
+        dump_format = getattr(self.adb, "dump_logcat_format", None)
+        if dump_format is not None:
+            for logcat_format in ("threadtime,uid,year", "threadtime", "time"):
+                sample = dump_format(device, logcat_format, timeout=20)
+                sample_path = sample_dir / f"{logcat_format.replace(',', '-')}.txt"
+                self._write_lines(sample_path, sample.stdout.splitlines()[:20])
+                self._record_artifact(db, job, sample_path, "adb-logcat-sample", sample.exit_code)
+                sample_formats.append(logcat_format if sample.ok else f"{logcat_format}:unverified")
+        metadata = {
+            "device_serial": device,
+            "device_type": "emulator" if device.startswith("emulator-") else "physical",
+            "model": self.adb.getprop("ro.product.model", device),
+            "manufacturer": self.adb.getprop("ro.product.manufacturer", device),
+            "android_version": self.adb.getprop("ro.build.version.release", device),
+            "sdk": self.adb.getprop("ro.build.version.sdk", device),
+            "adb_version": adb_version.stdout or adb_version.stderr,
+            "logcat_format": launch_logcat.logcat_format,
+            "logcat_buffers": ["all"],
+            "parser_sample_formats": sample_formats or ["unverified: no sample client"],
+            "target_pids": launch_capture["pids"],
+            "target_uids": launch_capture["uids"],
+            "apk_sha256": job.sha256,
+            "package": package_name,
+            "version_name": manifest_value.get("version_name"),
+            "version_code": manifest_value.get("version_code"),
+            "target_sdk": manifest_value.get("target_sdk"),
+            "line_counts": {
+                "launch": {
+                    "tier_a": len(launch_capture["tier_a"]),
+                    "tier_b": len(launch_capture["tier_b"]),
+                    "tier_c": len(launch_capture["tier_c"]),
+                },
+                "baseline": {
+                    "tier_a": len(baseline_capture["tier_a"]),
+                    "tier_b": len(baseline_capture["tier_b"]),
+                    "tier_c": len(baseline_capture["tier_c"]),
+                },
+            },
+        }
+        metadata_path = dynamic_dir / "capture-metadata.json"
+        metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
+        self._record_artifact(db, job, metadata_path, "masa-capture-metadata")
+
+    def _write_adb_audit(self, db: Session, job: AnalysisJob, dynamic_dir: Path) -> None:
+        audit_path = dynamic_dir / "adb-audit.json"
+        audit_path.write_text(json.dumps(getattr(self.adb, "command_log", []), indent=2), encoding="utf-8")
+        self._record_artifact(db, job, audit_path, "adb-audit")
+
     def _validate_static_attack_surface(
         self,
         db: Session,
         job: AnalysisJob,
         device: str,
         package_name: str,
-        logcat: str,
         dynamic_dir: Path,
     ) -> None:
         static_evidence = list(
@@ -292,6 +464,8 @@ class DynamicRuntimeOrchestrator:
                 finding_links.setdefault(str(evidence_id), []).append(finding.id)
 
         validations: list[dict[str, object]] = []
+        steps_dir = dynamic_dir / "steps"
+        steps_dir.mkdir(parents=True, exist_ok=True)
         for item in static_evidence:
             if len(validations) >= 40:
                 break
@@ -301,48 +475,83 @@ class DynamicRuntimeOrchestrator:
                 value = {}
             result: AdbResult | None = None
             action = ""
+            action_kind = ""
+            component_name = ""
             status = "potential"
             detail = "Static evidence was not safely exercised during this runtime pass."
 
-            if item.category == EvidenceCategory.component and value.get("exported") == "true":
+            if item.category == EvidenceCategory.component and (value.get("exported_effective") is True or value.get("exported") == "true"):
                 component_type = str(value.get("component_type") or "component")
                 component_name = self._qualified_component(package_name, str(value.get("name") or ""))
                 action = f"Validate exported {component_type}: {component_name}"
-                if component_type == "activity" and component_name:
-                    result = self.adb.start_activity(component_name, device)
-                    status = "observed" if result.ok and "Error" not in result.stdout else "not_reproducible"
-                    detail = "The exported activity accepted an explicit launch command; this confirms reachability only." if status == "observed" else result.stderr or result.stdout
+                if component_type in {"activity", "activity_alias"} and component_name:
+                    action_kind = "activity"
                 elif component_type == "service" and component_name:
-                    result = self.adb.resolve_service(component_name, device)
-                    status = "observed" if result.ok and component_name in result.stdout else "not_reproducible"
-                    detail = "The exported service resolved through the package manager; invocation was intentionally skipped for safety."
+                    action_kind = "service"
                 elif component_type == "content_provider" and value.get("authorities"):
-                    result = self.adb.resolve_provider(str(value.get("authorities")), device)
-                    status = "observed" if result.ok and package_name in result.stdout else "not_reproducible"
-                    detail = "The content provider authority resolved through the package manager; data access was intentionally skipped for safety."
+                    action_kind = "provider"
                 else:
                     detail = "Receiver/provider invocation was intentionally skipped; static exposure remains a potential risk."
             elif item.evidence_type == "deep_link":
                 uri = self._runtime_uri(value)
                 action = f"Validate deep link: {uri}" if uri else "Validate deep link"
                 if uri:
-                    result = self.adb.open_deep_link(uri, package_name, device)
-                    status = "observed" if result.ok and "No Activity" not in result.stdout else "not_reproducible"
-                    detail = "The deep-link dispatch command completed; this does not prove authorization or exploitability." if status == "observed" else result.stderr or result.stdout
+                    action_kind = "deep_link"
             elif item.category == EvidenceCategory.code_risk:
                 action = f"Observe runtime signal for {item.evidence_type}"
-                lowered = logcat.lower()
-                signal = any(token in lowered for token in ("cleartext", "webview", "ssl", "http://"))
-                status = "observed" if signal else "potential"
-                detail = "A related runtime signal was present in logcat." if signal else "No related startup logcat signal was observed; static evidence remains a potential risk."
+                action_kind = "code_risk"
             elif item.evidence_type == "application_flags":
                 action = "Compare installed package metadata with manifest flags"
-                package_dump = self.adb.shell(["dumpsys", "package", package_name], device=device, timeout=20)
-                result = package_dump
-                status = "observed" if package_dump.ok and package_name in package_dump.stdout else "not_reproducible"
-                detail = "Installed package metadata was readable; runtime metadata does not prove exploitability." if status == "observed" else package_dump.stderr or package_dump.stdout
+                action_kind = "application_flags"
             else:
                 continue
+
+            if not action_kind:
+                continue
+            step_number = len(validations) + 1
+            slug = re.sub(r"[^a-z0-9]+", "-", action.lower()).strip("-")[:70] or "validation"
+            marker = f"DYMASA_STEP {step_number} {slug}"
+            self.adb.log_marker(device, marker)
+            self.adb.clear_logcat(device)
+            if action_kind == "activity":
+                result = self.adb.start_activity(component_name, device)
+            elif action_kind == "service":
+                result = self.adb.resolve_service(component_name, device)
+            elif action_kind == "provider":
+                result = self.adb.resolve_provider(str(value.get("authorities")), device)
+            elif action_kind == "deep_link":
+                result = self.adb.open_deep_link(self._runtime_uri(value) or "", package_name, device)
+            elif action_kind == "application_flags":
+                result = self.adb.shell(["dumpsys", "package", package_name], device=device, timeout=20)
+            else:
+                result = self.adb.shell(["true"], device=device, timeout=10)
+            time.sleep(1.5)
+            step_capture = self.adb.dump_logcat(device, timeout=45)
+            seed_pids = self._package_pids(device, package_name)
+            capture = self._save_logcat_capture(db, job, dynamic_dir, step_capture, package_name, seed_pids, f"step-{step_number}")
+            step_lines = merge_tiers_in_order(step_capture.stdout.splitlines(), capture["tier_a"], capture["tier_b"])
+            step_path = steps_dir / f"{step_number:02d}-{slug}.txt"
+            self._write_lines(step_path, step_lines)
+            self._record_artifact(db, job, step_path, "adb-logcat-step", step_capture.exit_code)
+
+            if action_kind in {"activity", "deep_link"}:
+                status = "observed" if self.adb.am_start_succeeded(result) else "not_reproducible"
+                detail = "The Android start command completed successfully; this confirms reachability only." if status == "observed" else result.stderr or result.stdout
+            elif action_kind == "service":
+                status = "observed" if result.ok and component_name in result.stdout else "not_reproducible"
+                detail = "The exported service resolved through the package manager; invocation was intentionally skipped for safety." if status == "observed" else result.stderr or result.stdout
+            elif action_kind == "provider":
+                status = "observed" if result.ok and package_name in result.stdout else "not_reproducible"
+                detail = "The content provider authority resolved through the package manager; data access was intentionally skipped for safety." if status == "observed" else result.stderr or result.stdout
+            elif action_kind == "application_flags":
+                status = "observed" if result.ok and package_name in result.stdout else "not_reproducible"
+                detail = "Installed package metadata was readable; runtime metadata does not prove exploitability." if status == "observed" else result.stderr or result.stdout
+            else:
+                matches = code_risk_matches(step_lines)
+                status = "observed" if matches else "potential"
+                detail = "A specific related runtime signal was present in this validation step." if matches else "not exercised at runtime"
+
+            permission_lines = [line for line in step_capture.stdout.splitlines() if package_name in line and re.search(r"Permission Denial|SecurityException", line)]
 
             record = {
                 "static_evidence_id": item.id,
@@ -356,6 +565,10 @@ class DynamicRuntimeOrchestrator:
                 "stderr": (result.stderr[-2000:] if result else ""),
                 "exploitability_claim": "none",
                 "source": "DY-MASA safe runtime validation",
+                "step_log_path": str(step_path),
+                "tier_a_line_count": len(capture["tier_a"]),
+                "crash_events": capture["crashes"],
+                "permission_denial_or_security_exception_lines": permission_lines,
             }
             validations.append(record)
             self._record_evidence(db, job, "dynamic_validation", f"Runtime validation: {action}", record)
@@ -385,10 +598,7 @@ class DynamicRuntimeOrchestrator:
 
     @staticmethod
     def _filter_logcat(logcat: str, package_name: str) -> list[str]:
-        package_hint = package_name.lower()
-        filtered = []
-        for line in logcat.splitlines():
-            lowered = line.lower()
-            if package_hint in lowered or "fatal exception" in lowered or " anr " in lowered or "crash" in lowered:
-                filtered.append(line)
-        return filtered[:500]
+        lines = logcat.splitlines()
+        pids, uids = discover_target_pids(lines, package_name)
+        tier_a, tier_b, _ = classify(lines, package_name, pids, uids)
+        return merge_tiers_in_order(lines, tier_a, tier_b)

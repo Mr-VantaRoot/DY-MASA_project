@@ -34,6 +34,8 @@ class EmulatorManager:
         boot_timeout_seconds: int = 180,
         status_timeout_seconds: int = 2,
         avd_home: Path | None = None,
+        device_serial: str | None = None,
+        allow_physical_device: bool = False,
     ) -> None:
         self.sdk_path = sdk_path
         self.adb_path = Path(shutil.which("adb")) if not adb_path.exists() and shutil.which("adb") else adb_path
@@ -42,11 +44,23 @@ class EmulatorManager:
         self.boot_timeout_seconds = boot_timeout_seconds
         self.status_timeout_seconds = status_timeout_seconds
         self.avd_home = avd_home or Path.home() / ".android" / "avd"
-        self.adb = AdbClient(adb_path)
+        self.device_serial = device_serial
+        self.allow_physical_device = allow_physical_device
+        self.adb = AdbClient(self.adb_path)
+
+    def _select_ready_device(self, devices: list[AdbDevice] | None = None, preferred_serial: str | None = None) -> AdbDevice | None:
+        ready = [device for device in (devices if devices is not None else self.adb.devices(timeout=self.status_timeout_seconds)) if device.state == "device"]
+        selected_serial = preferred_serial or self.device_serial
+        if selected_serial:
+            return next((device for device in ready if device.serial == selected_serial), None)
+        emulator = next((device for device in ready if device.serial.startswith("emulator-")), None)
+        if emulator:
+            return emulator
+        return ready[0] if self.allow_physical_device and ready else None
 
     def status(self) -> EmulatorStatus:
         devices = self.adb.devices(timeout=self.status_timeout_seconds)
-        ready = self.adb.first_ready_device(devices=devices)
+        ready = self._select_ready_device(devices)
         android_version = self.adb.getprop("ro.build.version.release", ready.serial, timeout=5) if ready else None
         device_model = self.adb.getprop("ro.product.model", ready.serial, timeout=5) if ready else None
         return EmulatorStatus(
@@ -82,16 +96,16 @@ class EmulatorManager:
         return self.avd_name in listed_avds
 
     def ensure_ready_device(self, preferred_serial: str | None = None) -> AdbDevice | None:
-        ready = self.adb.first_ready_device(preferred_serial)
+        ready = self._select_ready_device(preferred_serial=preferred_serial)
         if ready:
             return ready if self.adb.wait_for_boot_completed(ready.serial, timeout=30) else None
         self.start()
-        return self.wait_until_ready(preferred_serial)
+        return self.wait_until_ready(preferred_serial or self.device_serial)
 
     def start(self) -> None:
         if not self.emulator_path.exists() or not self.avd_name:
             return
-        if self.adb.first_ready_device():
+        if self._select_ready_device():
             return
         subprocess.Popen(
             [str(self.emulator_path), "-avd", self.avd_name, "-no-snapshot-save"],
@@ -102,7 +116,7 @@ class EmulatorManager:
     def wait_until_ready(self, preferred_serial: str | None = None) -> AdbDevice | None:
         deadline = time.monotonic() + self.boot_timeout_seconds
         while time.monotonic() < deadline:
-            ready = self.adb.first_ready_device(preferred_serial)
+            ready = self._select_ready_device()
             if ready:
                 if self.adb.wait_for_boot_completed(ready.serial, timeout=5):
                     return ready

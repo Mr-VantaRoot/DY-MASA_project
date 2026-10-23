@@ -25,6 +25,8 @@ def _manager(settings: Settings) -> EmulatorManager:
         boot_timeout_seconds=settings.emulator_boot_timeout_seconds,
         status_timeout_seconds=settings.dynamic_status_timeout_seconds,
         avd_home=settings.android_avd_home,
+        device_serial=settings.dynamic_device_serial,
+        allow_physical_device=settings.dynamic_allow_physical_device,
     )
 
 
@@ -40,7 +42,7 @@ def dynamic_storage(settings: Settings = Depends(get_settings)) -> dict:
     device = manager.adb.first_ready_device()
     if device is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="No ready Android device is connected.")
-    report = manager.adb.storage_breakdown(device.serial)
+    report = manager.adb.storage_breakdown(device.serial, scan_personal=settings.dynamic_scan_personal_storage)
     volume = report.volume
     return {
         "device": device.serial,

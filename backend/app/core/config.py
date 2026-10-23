@@ -60,6 +60,13 @@ class Settings(BaseSettings):
     dynamic_timeout_seconds: int = 180
     dynamic_status_timeout_seconds: int = 2
     emulator_boot_timeout_seconds: int = 180
+    dynamic_device_serial: str | None = None
+    dynamic_allow_physical_device: bool = False
+    dynamic_scan_personal_storage: bool = False
+    dynamic_baseline_seconds: int = 3
+    enable_terminal: bool = False
+    terminal_token: str | None = Field(default=None, repr=False)
+    max_upload_bytes: int = 300 * 1024 * 1024
 
     ghidra_enabled: bool = True
     ghidra_headless_path: Path | None = None

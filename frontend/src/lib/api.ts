@@ -63,6 +63,7 @@ export async function runTerminalCommand(command: string, cwd?: string, previous
     body: JSON.stringify({ command, cwd, previous_cwd: previousCwd }),
   });
   const payload = await response.json().catch(() => ({}));
+  if (response.status === 404) throw new Error("Terminal is disabled. Set MOBILE_PENTEST_ENABLE_TERMINAL=true and configure MOBILE_PENTEST_TERMINAL_TOKEN to enable it.");
   if (!response.ok) throw new Error(payload.detail ?? "Terminal command failed.");
   return payload as { command: string; cwd: string; output: string; exit_code: number };
 }

@@ -154,6 +154,12 @@ class ManifestEvidenceExtractor:
                 name = self._android_attr(component, "name")
                 exported = self._android_attr(component, "exported")
                 intent_filters = component.findall("intent-filter")
+                exported_implicit = (
+                    exported is None
+                    and component_type != "content_provider"
+                    and bool(intent_filters)
+                )
+                exported_effective = exported == "true" or exported_implicit
                 evidence.append(
                     EvidenceItem(
                         category=EvidenceCategory.component,
@@ -163,6 +169,9 @@ class ManifestEvidenceExtractor:
                             "name": name,
                             "component_type": component_type,
                             "exported": exported,
+                            "exported_effective": exported_effective,
+                            "exported_implicit": exported_implicit,
+                            "launcher_entry": self._launcher_entry(component_type, intent_filters),
                             "intent_filter_count": len(intent_filters),
                             "permission": self._android_attr(component, "permission"),
                             "authorities": self._android_attr(component, "authorities"),
@@ -173,6 +182,22 @@ class ManifestEvidenceExtractor:
                 )
                 evidence.extend(self._deep_links(name, component_type, intent_filters, manifest_path))
         return evidence
+
+    def _launcher_entry(self, component_type: str, intent_filters: list[ET.Element]) -> bool:
+        if component_type not in {"activity", "activity_alias"}:
+            return False
+        for intent_filter in intent_filters:
+            actions = {
+                self._android_attr(action, "name")
+                for action in intent_filter.findall("action")
+            }
+            categories = {
+                self._android_attr(category, "name")
+                for category in intent_filter.findall("category")
+            }
+            if "android.intent.action.MAIN" in actions and "android.intent.category.LAUNCHER" in categories:
+                return True
+        return False
 
     def _deep_links(
         self,
@@ -247,6 +272,13 @@ class CodeSecretEvidenceExtractor:
     MAX_FILE_BYTES = 1024 * 1024
     MAX_EVIDENCE = 80
 
+    def __init__(self) -> None:
+        self.limit_metadata = {
+            "max_evidence": self.MAX_EVIDENCE,
+            "emitted": 0,
+            "truncated": False,
+        }
+
     def extract(self, *roots: Path) -> list[EvidenceItem]:
         evidence: list[EvidenceItem] = []
         for root in roots:
@@ -254,6 +286,7 @@ class CodeSecretEvidenceExtractor:
                 continue
             for path in root.rglob("*"):
                 if len(evidence) >= self.MAX_EVIDENCE:
+                    self.limit_metadata.update(emitted=len(evidence), truncated=True)
                     return evidence
                 if not path.is_file() or path.suffix.lower() not in self.EXTENSIONS:
                     continue
@@ -263,7 +296,9 @@ class CodeSecretEvidenceExtractor:
                     continue
                 evidence.extend(self._scan_file(path))
                 if len(evidence) >= self.MAX_EVIDENCE:
+                    self.limit_metadata.update(emitted=self.MAX_EVIDENCE, truncated=True)
                     return evidence[: self.MAX_EVIDENCE]
+        self.limit_metadata["emitted"] = len(evidence)
         return evidence
 
     def _scan_file(self, path: Path) -> list[EvidenceItem]:

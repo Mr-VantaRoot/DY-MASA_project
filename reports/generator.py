@@ -78,6 +78,7 @@ class HtmlReportGenerator:
   {self._findings(findings, evidence_by_id, evidence)}
   {self._validation_plan(findings)}
   {self._runtime_evidence(evidence)}
+  {self._dynamic_validation_section(evidence)}
   {self._evidence(evidence)}
   {self._reasoning(latest_reasoning)}
 </body>
@@ -117,8 +118,34 @@ class HtmlReportGenerator:
   <li>Receiver and content-provider invocation is intentionally skipped to avoid modifying application state or accessing data without an explicit test plan.</li>
   <li>Logcat and network indicators are observations, not proof that a vulnerability was exploited.</li>
   <li>No destructive payloads, credential attacks, or uncontrolled external network testing are performed automatically.</li>
+  <li>Not checked: network traffic, file contents, how the app handles input, and native code behavior at runtime.</li>
 </ul>
 """
+
+    @staticmethod
+    def _dynamic_validation_section(evidence: list[AnalysisEvidence]) -> str:
+        validations = [item for item in evidence if item.category.value == "runtime" and item.evidence_type == "dynamic_validation"]
+        if not validations:
+            return "<h2>Dynamic Validation</h2><p>No per-step DY-MASA validation records were captured.</p>"
+        rows = []
+        for item in validations:
+            try:
+                payload = json.loads(item.value_json)
+            except json.JSONDecodeError:
+                payload = {}
+            crashes = payload.get("crash_events") or []
+            rows.append(
+                f"<tr><td>{escape(str(payload.get('result', 'potential')).upper())}</td>"
+                f"<td>{escape(str(payload.get('action', item.label)))}</td>"
+                f"<td>{escape(str(len(crashes)))}</td>"
+                f"<td><code>{escape(str(payload.get('step_log_path', '')))}</code></td></tr>"
+            )
+        return """
+<h2>Dynamic Validation</h2>
+<p>Each row is an observed validation step. Results do not assert that a vulnerability was found or exploited.</p>
+<table><tr><th>Result</th><th>Step</th><th>Crash events</th><th>Step log</th></tr>%s</table>
+<p class="meta"><strong>Not checked:</strong> network traffic, file contents, how the app handles input, and native code behavior at runtime.</p>
+""" % "\n".join(rows)
 
     @staticmethod
     def _job_summary(job: AnalysisJob) -> str:
@@ -258,9 +285,13 @@ class HtmlReportGenerator:
                 f"<td>{escape(item.label)}</td><td><code>{escape(item.source_path)}</code></td></tr>"
             )
         rows = "\n".join(rows)
+        limits_note = ""
+        if any(item.evidence_type == "extraction_limits" for item in runtime_evidence):
+            limits_note = "<p><strong>Extraction limits:</strong> reported for transparency; these limits do not create findings.</p>"
         return f"""
 <h2>DY-MASA Runtime Evidence</h2>
 <p>Captured during emulator/device execution. This section records observed runtime activity and artifacts; it does not assert vulnerability exploitability.</p>
+{limits_note}
 <table>
   <tr><th>Type</th><th>Result</th><th>Observation</th><th>Artifact / Source</th></tr>
   {rows}
@@ -398,6 +429,7 @@ class PdfReportGenerator:
                 Paragraph("Evidence Register", heading),
                 self._evidence_table(evidence),
                 *self._runtime_evidence_story(evidence, heading, body),
+                *self._dynamic_validation_story(evidence, heading, body),
                 Spacer(1, 0.2 * inch),
                 Paragraph("Manual Validation Plan", heading),
                 *self._validation_plan_story(findings, body),
@@ -519,6 +551,9 @@ class PdfReportGenerator:
             except json.JSONDecodeError:
                 payload = {}
             rows.append([item.evidence_type, str(payload.get("result", "observed")).upper(), item.label, item.source_path])
+        limits_note = []
+        if any(item.evidence_type == "extraction_limits" for item in runtime_evidence):
+            limits_note = [Paragraph("Extraction limits are reported for transparency and do not create findings.", body)]
         return [
             Spacer(1, 0.2 * inch),
             Paragraph("DY-MASA Runtime Evidence", heading),
@@ -526,8 +561,35 @@ class PdfReportGenerator:
                 "Captured during emulator/device execution. These records document observed runtime activity and artifacts; they do not assert vulnerability exploitability.",
                 body,
             ),
+            *limits_note,
             self._table(rows),
         ]
+
+    @staticmethod
+    def _dynamic_validation_story(
+        evidence: list[AnalysisEvidence],
+        heading: ParagraphStyle,
+        body: ParagraphStyle,
+    ) -> list[object]:
+        validations = [item for item in evidence if item.category.value == "runtime" and item.evidence_type == "dynamic_validation"]
+        if not validations:
+            return [Paragraph("Dynamic Validation: no per-step records were captured.", body)]
+        story: list[object] = [
+            Spacer(1, 0.2 * inch),
+            Paragraph("Dynamic Validation", heading),
+            Paragraph("These are observed validation steps, not claims that a vulnerability was found or exploited.", body),
+        ]
+        for item in validations:
+            try:
+                payload = json.loads(item.value_json)
+            except json.JSONDecodeError:
+                payload = {}
+            story.append(Paragraph(
+                f"{str(payload.get('result', 'potential')).upper()} - {payload.get('action', item.label)}; crashes: {len(payload.get('crash_events') or [])}; log: {payload.get('step_log_path', 'not recorded')}",
+                body,
+            ))
+        story.append(Paragraph("Not checked: network traffic, file contents, how the app handles input, and native code behavior at runtime.", body))
+        return story
 
     @staticmethod
     def _runtime_limitations_story(evidence: list[AnalysisEvidence], body: ParagraphStyle) -> list[object]:
@@ -538,6 +600,7 @@ class PdfReportGenerator:
             Paragraph("Receiver and content-provider invocation is intentionally skipped to avoid modifying application state or accessing data without an explicit test plan.", body),
             Paragraph("Logcat and network indicators are observations, not proof that a vulnerability was exploited.", body),
             Paragraph("No destructive payloads, credential attacks, or uncontrolled external network testing are performed automatically.", body),
+            Paragraph("Not checked: network traffic, file contents, how the app handles input, and native code behavior at runtime.", body),
         ]
 
     def _evidence_table(self, evidence: list[AnalysisEvidence]) -> Table:

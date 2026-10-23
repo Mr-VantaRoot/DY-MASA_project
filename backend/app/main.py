@@ -29,7 +29,8 @@ def create_app() -> FastAPI:
 
     app.include_router(health_router, prefix="/api")
     app.include_router(jobs_router, prefix="/api")
-    app.include_router(terminal_router, prefix="/api")
+    if settings.enable_terminal:
+        app.include_router(terminal_router, prefix="/api")
     app.include_router(dynamic_router, prefix="/api")
 
     @app.on_event("startup")

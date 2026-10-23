@@ -79,7 +79,7 @@ export function TerminalPage() {
         <TriangleAlert size={16} className="shrink-0 mt-0.5" />
         <p>
           This runs real shell commands on the machine hosting the backend. Use it only for authorized,
-          local demo/debug purposes.
+          local demo/debug purposes. It is disabled by default; enable it only with a private terminal token.
         </p>
       </div>
 
