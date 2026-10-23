@@ -7,7 +7,7 @@ from app.api.routes.terminal import router as terminal_router
 from app.api.routes.dynamic import router as dynamic_router
 from app.core.config import get_settings
 from app.db.session import init_db
-from app.services.job_service import cleanup_interrupted_jobs
+from app.services.job_service import cleanup_interrupted_jobs, dispatch_queued_jobs
 
 
 def create_app() -> FastAPI:
@@ -39,6 +39,7 @@ def create_app() -> FastAPI:
             directory.mkdir(parents=True, exist_ok=True)
         init_db()
         cleanup_interrupted_jobs(settings)
+        dispatch_queued_jobs(settings)
 
     return app
 

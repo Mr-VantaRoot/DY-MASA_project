@@ -102,15 +102,17 @@ export function useJobState() {
         const detail = payload.detail?.trim();
         const timestamp = payload.timestamp ? `[${payload.timestamp.slice(11, 19)}]` : ">";
         const line = [message, detail].filter(Boolean).join(" - ");
-        setPipelineEvents((current) => [...current.slice(-79), payload]);
-        if (line) setLiveLog((current) => [...current.slice(-79), `${timestamp} ${line}`]);
+        setPipelineEvents((current) => [...current, payload]);
+        if (line) setLiveLog((current) => [...current, `${timestamp} ${line}`]);
+        if (["job_completed", "job_failed", "job_cancelled"].includes(payload.stage)) {
+          source.close();
+        }
       } catch (e) {
         // Ignore malformed SSE payloads.
       }
     };
-    source.onerror = () => {
-      source.close();
-    };
+    // Leave the source open on transient failures so EventSource can reconnect
+    // with Last-Event-ID and recover durable events from the backend.
 
     return () => source.close();
   }, [activeJobId, clearJobDetails, loadJobDetails]);

@@ -4,9 +4,10 @@ import time
 from pathlib import Path
 from threading import Thread
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import select
 
 from app.core.config import Settings, get_settings
 from app.db.session import SessionLocal, get_db
@@ -14,6 +15,7 @@ from app.db.base import (
     AnalysisArtifact,
     AnalysisEvidence,
     AnalysisFinding,
+    AnalysisJobEvent,
     AnalysisJob,
     AnalysisJobStage,
     AnalysisJobStatus,
@@ -55,6 +57,38 @@ def _resolve_storage_file(path: Path, storage_root: Path, resource_name: str) ->
     if not resolved.is_file():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"{resource_name} file not found.")
     return resolved
+
+
+def _persistent_events(job_id: str, after_event_id: int = 0) -> list[JobStageEvent]:
+    with SessionLocal() as db:
+        rows = db.scalars(
+            select(AnalysisJobEvent)
+            .where(AnalysisJobEvent.job_id == job_id, AnalysisJobEvent.event_id > after_event_id)
+            .order_by(AnalysisJobEvent.event_id.asc())
+        ).all()
+    return [
+        JobStageEvent(
+            event_id=row.event_id,
+            stage=row.stage,
+            status=row.status,
+            message=row.message,
+            detail=row.detail,
+            timestamp=row.created_at.isoformat(timespec="seconds"),
+        )
+        for row in rows
+    ]
+
+
+def _events_after(job_id: str, after_event_id: int = 0) -> list[JobStageEvent]:
+    """Merge durable history and the live cache without duplicate event IDs."""
+    events_by_id = {event.event_id: event for event in _persistent_events(job_id, after_event_id)}
+    for event in job_event_store.snapshot(job_id, after_event_id=after_event_id):
+        events_by_id.setdefault(event.event_id, event)
+    return [events_by_id[event_id] for event_id in sorted(events_by_id)]
+
+
+def _sse_event(event: JobStageEvent) -> str:
+    return f"id: {event.event_id}\ndata: {json.dumps(as_event_payload(event))}\n\n"
 
 
 @router.post("", response_model=AnalysisJobResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -135,31 +169,34 @@ def stream_job_events(
     job_id: str,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    last_event_id: int | None = Header(default=None, alias="Last-Event-ID"),
 ) -> StreamingResponse:
     if JobService(db, settings).get_job(job_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis job not found.")
 
     async def event_stream() -> object:
-        last_event_id = 0
+        current_event_id = max(0, last_event_id if isinstance(last_event_id, int) else 0)
         terminal_event_seen = False
         terminal_deadline: float | None = None
-        initial_events = job_event_store.snapshot(job_id)
+        initial_events = _events_after(job_id, current_event_id)
         for event in initial_events:
-            payload = json.dumps(as_event_payload(event))
-            last_event_id = max(last_event_id, event.event_id)
+            current_event_id = max(current_event_id, event.event_id)
             terminal_event_seen = terminal_event_seen or event.stage in TERMINAL_EVENT_STAGES
-            yield f"data: {payload}\n\n"
+            yield _sse_event(event)
+        if terminal_event_seen:
+            return
 
         while True:
-            # Use a bounded sleep between snapshots so the ASGI event loop remains
-            # responsive without a tight/busy polling loop.
-            await asyncio.sleep(0.5)
-            new_events = job_event_store.snapshot(job_id, after_event_id=last_event_id)
+            # Wait on the live condition store off the ASGI event loop. The timeout
+            # gives durable storage a chance to surface events published elsewhere.
+            await asyncio.to_thread(job_event_store.wait_for, job_id, current_event_id, 2.0)
+            new_events = _events_after(job_id, current_event_id)
             for event in new_events:
-                payload = json.dumps(as_event_payload(event))
-                last_event_id = max(last_event_id, event.event_id)
+                current_event_id = max(current_event_id, event.event_id)
                 terminal_event_seen = terminal_event_seen or event.stage in TERMINAL_EVENT_STAGES
-                yield f"data: {payload}\n\n"
+                yield _sse_event(event)
+            if terminal_event_seen:
+                return
             with SessionLocal() as state_db:
                 job = state_db.get(AnalysisJob, job_id)
             if job is None:
@@ -175,13 +212,13 @@ def stream_job_events(
                     terminal_deadline = time.monotonic() + TERMINAL_EVENT_GRACE_SECONDS
                 elif time.monotonic() >= terminal_deadline:
                     fallback = JobStageEvent(
-                        event_id=last_event_id + 1,
+                        event_id=current_event_id + 1,
                         stage=f"job_{job.status.value}",
                         status=job.status.value,
                         message=job.current_step,
                         detail=job.error_message,
                     )
-                    yield f"data: {json.dumps(as_event_payload(fallback))}\n\n"
+                    yield _sse_event(fallback)
                     return
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

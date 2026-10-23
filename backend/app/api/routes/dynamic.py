@@ -85,7 +85,7 @@ def _run_dynamic(job_id: str, run_stage_id: str, settings: Settings) -> None:
                 run_stage.message = "DY-MASA analysis completed"
                 run_stage.detail = "Runtime evidence and reports were refreshed"
             db.commit()
-            emit_job_event(job.id, "job_completed", "completed", "DY-MASA analysis completed", "Runtime evidence and reports were refreshed")
+            emit_job_event(job.id, "job_completed", "completed", "DY-MASA analysis completed", "Runtime evidence and reports were refreshed", db=db)
         except DynamicAnalysisError as exc:
             db.add(AnalysisJobStage(job_id=job.id, stage="dynamic_error", status="failed", message="DY-MASA analysis failed", detail=str(exc)))
             run_stage = db.get(AnalysisJobStage, run_stage_id)
@@ -96,7 +96,7 @@ def _run_dynamic(job_id: str, run_stage_id: str, settings: Settings) -> None:
             job.error_message = str(exc)
             job.current_step = "DY-MASA analysis failed"
             db.commit()
-            emit_job_event(job.id, "job_failed", "failed", "DY-MASA analysis failed", str(exc))
+            emit_job_event(job.id, "job_failed", "failed", "DY-MASA analysis failed", str(exc), db=db)
         except Exception as exc:
             db.add(AnalysisJobStage(job_id=job.id, stage="dynamic_error", status="failed", message="DY-MASA analysis failed", detail=str(exc)))
             run_stage = db.get(AnalysisJobStage, run_stage_id)
@@ -107,7 +107,7 @@ def _run_dynamic(job_id: str, run_stage_id: str, settings: Settings) -> None:
             job.error_message = str(exc)
             job.current_step = "DY-MASA analysis failed"
             db.commit()
-            emit_job_event(job.id, "job_failed", "failed", "DY-MASA analysis failed", str(exc))
+            emit_job_event(job.id, "job_failed", "failed", "DY-MASA analysis failed", str(exc), db=db)
 
 
 @router.post("/jobs/{job_id}/dynamic/start", status_code=status.HTTP_202_ACCEPTED)

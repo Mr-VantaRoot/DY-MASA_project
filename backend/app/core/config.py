@@ -67,6 +67,7 @@ class Settings(BaseSettings):
     enable_terminal: bool = False
     terminal_token: str | None = Field(default=None, repr=False)
     max_upload_bytes: int = 300 * 1024 * 1024
+    max_concurrent_analysis_jobs: int = 1
 
     ghidra_enabled: bool = True
     ghidra_headless_path: Path | None = None

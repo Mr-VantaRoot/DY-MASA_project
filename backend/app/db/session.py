@@ -50,6 +50,29 @@ def ensure_local_schema_updates() -> None:
     if engine.dialect.name != "postgresql":
         return
     with engine.begin() as connection:
+        # Additive migration for durable SSE history. Base.metadata.create_all handles
+        # fresh databases; this guard also upgrades existing PostgreSQL installations.
+        connection.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS analysis_job_events (
+                    event_id SERIAL PRIMARY KEY,
+                    job_id VARCHAR(36) NOT NULL REFERENCES analysis_jobs(id) ON DELETE CASCADE,
+                    stage VARCHAR(120) NOT NULL,
+                    status VARCHAR(40) NOT NULL,
+                    message TEXT NOT NULL,
+                    detail TEXT NULL,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_analysis_job_events_job_id "
+                "ON analysis_job_events (job_id)"
+            )
+        )
         for enum_name, enum_values in {
             "analysis_evidence_category": ["code_secret", "code_risk", "runtime"],
             "analysis_finding_severity": ["critical"],

@@ -107,6 +107,22 @@ class AnalysisJobStage(Base):
     job: Mapped[AnalysisJob] = relationship()
 
 
+class AnalysisJobEvent(Base):
+    """Append-only SSE history; unlike the live cache, this survives restarts."""
+
+    __tablename__ = "analysis_job_events"
+
+    event_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_id: Mapped[str] = mapped_column(ForeignKey("analysis_jobs.id", ondelete="CASCADE"), nullable=False, index=True)
+    stage: Mapped[str] = mapped_column(String(120), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    job: Mapped[AnalysisJob] = relationship()
+
+
 class AnalysisEvidence(Base):
     __tablename__ = "analysis_evidence"
 

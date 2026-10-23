@@ -6,6 +6,7 @@ from uuid import uuid4
 import hashlib
 import json
 import shutil
+from threading import BoundedSemaphore, Lock, Thread
 import zipfile
 
 from fastapi import UploadFile
@@ -34,6 +35,20 @@ from app.db.base import (
 from app.services.job_control import JobCancelled, job_cancellation_registry
 from app.services.job_events import emit_job_event, job_event_store
 from reports.generator import HtmlReportGenerator, PdfReportGenerator
+
+
+_analysis_semaphores: dict[int, BoundedSemaphore] = {}
+_analysis_semaphore_lock = Lock()
+
+
+def analysis_job_semaphore(settings: Settings) -> BoundedSemaphore:
+    limit = max(1, int(settings.max_concurrent_analysis_jobs))
+    with _analysis_semaphore_lock:
+        semaphore = _analysis_semaphores.get(limit)
+        if semaphore is None:
+            semaphore = BoundedSemaphore(limit)
+            _analysis_semaphores[limit] = semaphore
+        return semaphore
 
 
 @dataclass(frozen=True)
@@ -135,7 +150,9 @@ class JobService(_JobStorageHelpers):
 
         job = self._create_job_record(job_id, original_filename, stored_filename, apk_path)
         record_job_stage(job, "upload_received", "completed", "Upload received and validated", f"Stored as {stored_filename}")
-        emit_job_event(job.id, "upload_received", "completed", "Upload received and validated", f"Stored as {stored_filename}")
+        emit_job_event(job.id, "upload_received", "completed", "Upload received and validated", f"Stored as {stored_filename}", db=self._db)
+        if job.status == AnalysisJobStatus.failed:
+            emit_job_event(job.id, "job_failed", "failed", job.current_step, job.error_message, db=self._db)
         return job
 
     def create_job_from_path(self, source_path: Path) -> AnalysisJob:
@@ -153,7 +170,9 @@ class JobService(_JobStorageHelpers):
 
         job = self._create_job_record(job_id, source_path.name, stored_filename, apk_path)
         record_job_stage(job, "upload_received", "completed", "Upload received and validated", f"Stored as {stored_filename}")
-        emit_job_event(job.id, "upload_received", "completed", "Upload received and validated", f"Stored as {stored_filename}")
+        emit_job_event(job.id, "upload_received", "completed", "Upload received and validated", f"Stored as {stored_filename}", db=self._db)
+        if job.status == AnalysisJobStatus.failed:
+            emit_job_event(job.id, "job_failed", "failed", job.current_step, job.error_message, db=self._db)
         return job
 
     def _create_job_record(
@@ -202,7 +221,7 @@ class JobService(_JobStorageHelpers):
         return True
 
     def list_jobs(self) -> list[AnalysisJob]:
-        statement = select(AnalysisJob).order_by(AnalysisJob.created_at.desc()).limit(50)
+        statement = select(AnalysisJob).order_by(AnalysisJob.created_at.desc())
         return list(self._db.scalars(statement).all())
 
     def regenerate_reports(self, job: AnalysisJob) -> None:
@@ -245,66 +264,71 @@ class JobRunner(_JobStorageHelpers):
     def prepare_uploaded_apk(self, job_id: str) -> None:
         from app.db.session import SessionLocal
 
-        with SessionLocal() as db:
-            job = db.get(AnalysisJob, job_id)
-            if job is None:
-                return
+        semaphore = analysis_job_semaphore(self._settings)
+        semaphore.acquire()
+        try:
+            with SessionLocal() as db:
+                job = db.get(AnalysisJob, job_id)
+                if job is None:
+                    return
 
-            cancel_event = job_cancellation_registry.register(job_id)
-            try:
-                self._raise_if_cancelled(job.id)
-                workspace_path = self._prepare_workspace(db, job)
-                self._raise_if_cancelled(job.id)
-                self._record_upload_metadata(db, job, workspace_path)
-                self._raise_if_cancelled(job.id)
-                decompilation = self._decompile_apk(db, job, workspace_path, cancel_event)
-                self._raise_if_cancelled(job.id)
-                persisted_evidence = self._extract_and_record_evidence(db, job, decompilation)
-                self._raise_if_cancelled(job.id)
-                persisted_findings = self._generate_and_record_findings(db, job, persisted_evidence)
-                self._raise_if_cancelled(job.id)
-                persisted_reasoning = self._generate_and_record_reasoning(
-                    db,
-                    job,
-                    persisted_evidence,
-                    persisted_findings,
-                )
-                self._raise_if_cancelled(job.id)
-                self._generate_and_record_reports(db, job, persisted_evidence, persisted_findings, persisted_reasoning)
-                self._raise_if_cancelled(job.id)
-                self._complete_job(db, job)
-            except (JobCancelled, DecompilationCancelled):
-                self._cancel_job(db, job_id)
-            except DecompilationError as exc:
-                self._fail_decompilation(db, job, exc)
-            except Exception as exc:
-                if job_cancellation_registry.is_cancelled(job_id):
+                cancel_event = job_cancellation_registry.register(job_id)
+                try:
+                    self._raise_if_cancelled(job.id)
+                    workspace_path = self._prepare_workspace(db, job)
+                    self._raise_if_cancelled(job.id)
+                    self._record_upload_metadata(db, job, workspace_path)
+                    self._raise_if_cancelled(job.id)
+                    decompilation = self._decompile_apk(db, job, workspace_path, cancel_event)
+                    self._raise_if_cancelled(job.id)
+                    persisted_evidence = self._extract_and_record_evidence(db, job, decompilation)
+                    self._raise_if_cancelled(job.id)
+                    persisted_findings = self._generate_and_record_findings(db, job, persisted_evidence)
+                    self._raise_if_cancelled(job.id)
+                    persisted_reasoning = self._generate_and_record_reasoning(
+                        db,
+                        job,
+                        persisted_evidence,
+                        persisted_findings,
+                    )
+                    self._raise_if_cancelled(job.id)
+                    self._generate_and_record_reports(db, job, persisted_evidence, persisted_findings, persisted_reasoning)
+                    self._raise_if_cancelled(job.id)
+                    self._complete_job(db, job)
+                except (JobCancelled, DecompilationCancelled):
                     self._cancel_job(db, job_id)
-                else:
-                    self._fail_job(db, job, "APK analysis preparation failed", str(exc))
-            finally:
-                job_cancellation_registry.clear(job_id)
+                except DecompilationError as exc:
+                    self._fail_decompilation(db, job, exc)
+                except Exception as exc:
+                    if job_cancellation_registry.is_cancelled(job_id):
+                        self._cancel_job(db, job_id)
+                    else:
+                        self._fail_job(db, job, "APK analysis preparation failed", str(exc))
+                finally:
+                    job_cancellation_registry.clear(job_id)
+        finally:
+            semaphore.release()
 
     def _prepare_workspace(self, db: Session, job: AnalysisJob) -> Path:
         self._mark(db, job, AnalysisJobStatus.running, 20, "Creating analysis workspace")
         record_job_stage(job, "workspace_created", "running", "Workspace created", "Analysis workspace directory initialized")
-        emit_job_event(job.id, "workspace_created", "running", "Workspace created", "Analysis workspace directory initialized")
+        emit_job_event(job.id, "workspace_created", "running", "Workspace created", "Analysis workspace directory initialized", db=db)
         workspace_path = self._settings.workspace_dir / job.id
         workspace_path.mkdir(parents=True, exist_ok=True)
         job.workspace_path = str(workspace_path)
         db.commit()
         record_job_stage(job, "workspace_created", "completed", "Workspace created", f"Workspace: {workspace_path}")
-        emit_job_event(job.id, "workspace_created", "completed", "Workspace created", f"Workspace: {workspace_path}")
+        emit_job_event(job.id, "workspace_created", "completed", "Workspace created", f"Workspace: {workspace_path}", db=db)
         return workspace_path
 
     def _record_upload_metadata(self, db: Session, job: AnalysisJob, workspace_path: Path) -> None:
         self._mark(db, job, AnalysisJobStatus.running, 55, "Computing APK SHA-256")
         record_job_stage(job, "sha256_computed", "running", "SHA-256 computed", "Computing file fingerprint")
-        emit_job_event(job.id, "sha256_computed", "running", "SHA-256 computed", "Computing file fingerprint")
+        emit_job_event(job.id, "sha256_computed", "running", "SHA-256 computed", "Computing file fingerprint", db=db)
         job.sha256 = self._sha256(Path(job.apk_path))
         db.commit()
         record_job_stage(job, "sha256_computed", "completed", "SHA-256 computed", f"Fingerprint: {job.sha256}")
-        emit_job_event(job.id, "sha256_computed", "completed", "SHA-256 computed", f"Fingerprint: {job.sha256}")
+        emit_job_event(job.id, "sha256_computed", "completed", "SHA-256 computed", f"Fingerprint: {job.sha256}", db=db)
 
         self._mark(db, job, AnalysisJobStatus.running, 85, "Recording upload metadata")
         metadata_path = workspace_path / "upload-metadata.txt"
@@ -325,29 +349,29 @@ class JobRunner(_JobStorageHelpers):
 
         self._mark(db, job, AnalysisJobStatus.running, 88, "Running apktool decompilation")
         record_job_stage(job, "apktool_decode", "running", "apktool decode running", "Running apktool decode")
-        emit_job_event(job.id, "apktool_decode", "running", "apktool decode running", "Running apktool decode")
+        emit_job_event(job.id, "apktool_decode", "running", "apktool decode running", "Running apktool decode", db=db)
         apktool_result = decompiler.run_apktool(Path(job.apk_path), workspace_path, cancel_event)
         self._record_decompilation_artifacts(db, job, apktool_result, ArtifactType.apktool_output)
         record_job_stage(job, "apktool_decode", "completed", "apktool decode complete", f"Exit code {apktool_result.exit_code}")
-        emit_job_event(job.id, "apktool_decode", "completed", "apktool decode complete", f"Exit code {apktool_result.exit_code}")
+        emit_job_event(job.id, "apktool_decode", "completed", "apktool decode complete", f"Exit code {apktool_result.exit_code}", db=db)
 
         self._mark(db, job, AnalysisJobStatus.running, 94, "Running JADX decompilation")
         record_job_stage(job, "jadx_decompile", "running", "JADX decompile running", "Running JADX decompilation")
-        emit_job_event(job.id, "jadx_decompile", "running", "JADX decompile running", "Running JADX decompilation")
+        emit_job_event(job.id, "jadx_decompile", "running", "JADX decompile running", "Running JADX decompilation", db=db)
         jadx_result = decompiler.run_jadx(Path(job.apk_path), workspace_path, cancel_event)
         self._record_decompilation_artifacts(db, job, jadx_result, ArtifactType.jadx_output)
         record_job_stage(job, "jadx_decompile", "completed", "JADX decompile complete", f"Exit code {jadx_result.exit_code}")
-        emit_job_event(job.id, "jadx_decompile", "completed", "JADX decompile complete", f"Exit code {jadx_result.exit_code}")
+        emit_job_event(job.id, "jadx_decompile", "completed", "JADX decompile complete", f"Exit code {jadx_result.exit_code}", db=db)
 
         self._mark(db, job, AnalysisJobStatus.running, 96, "Running optional Ghidra native analysis")
         record_job_stage(job, "ghidra_analysis", "running", "Ghidra native analysis running", "Inspecting embedded native libraries when available")
-        emit_job_event(job.id, "ghidra_analysis", "running", "Ghidra native analysis running", "Inspecting embedded native libraries when available")
+        emit_job_event(job.id, "ghidra_analysis", "running", "Ghidra native analysis running", "Inspecting embedded native libraries when available", db=db)
         ghidra_result = GhidraAnalyzer(self._settings).run(apktool_result.output_path, workspace_path, cancel_event)
         summary_path = GhidraAnalyzer.write_summary(ghidra_result)
         self._record_analysis_artifacts(db, job, ghidra_result, summary_path)
         stage_status = "completed" if ghidra_result.status in {"completed", "skipped"} else "failed"
         record_job_stage(job, "ghidra_analysis", stage_status, f"Ghidra native analysis {ghidra_result.status}", ghidra_result.detail)
-        emit_job_event(job.id, "ghidra_analysis", stage_status, f"Ghidra native analysis {ghidra_result.status}", ghidra_result.detail)
+        emit_job_event(job.id, "ghidra_analysis", stage_status, f"Ghidra native analysis {ghidra_result.status}", ghidra_result.detail, db=db)
         return DecompilationOutputs(apktool=apktool_result, jadx=jadx_result, ghidra=ghidra_result)
 
     def _extract_and_record_evidence(
@@ -358,11 +382,11 @@ class JobRunner(_JobStorageHelpers):
     ) -> list[AnalysisEvidence]:
         self._mark(db, job, AnalysisJobStatus.running, 98, "Extracting APK evidence")
         record_job_stage(job, "evidence_extraction", "running", "Evidence extraction running", "Extracting manifest, code, and secret evidence")
-        emit_job_event(job.id, "evidence_extraction", "running", "Evidence extraction running", "Extracting manifest, code, and secret evidence")
+        emit_job_event(job.id, "evidence_extraction", "running", "Evidence extraction running", "Extracting manifest, code, and secret evidence", db=db)
         evidence_items = self._extract_evidence(decompilation)
         self._record_evidence(db, job, evidence_items)
         record_job_stage(job, "evidence_extraction", "completed", "Evidence extraction complete", f"Extracted {len(evidence_items)} evidence records")
-        emit_job_event(job.id, "evidence_extraction", "completed", "Evidence extraction complete", f"Extracted {len(evidence_items)} evidence records")
+        emit_job_event(job.id, "evidence_extraction", "completed", "Evidence extraction complete", f"Extracted {len(evidence_items)} evidence records", db=db)
         return self._load_evidence(db, job)
 
     @staticmethod
@@ -394,11 +418,11 @@ class JobRunner(_JobStorageHelpers):
     ) -> list[AnalysisFinding]:
         self._mark(db, job, AnalysisJobStatus.running, 99, "Generating evidence-backed findings")
         record_job_stage(job, "rule_analysis", "running", "Rule-based analysis running", "Generating findings from extracted evidence")
-        emit_job_event(job.id, "rule_analysis", "running", "Rule-based analysis running", "Generating findings from extracted evidence")
+        emit_job_event(job.id, "rule_analysis", "running", "Rule-based analysis running", "Generating findings from extracted evidence", db=db)
         findings = EvidenceFindingGenerator().generate(evidence)
         self._record_findings(db, job, findings)
         record_job_stage(job, "rule_analysis", "completed", "Rule-based analysis complete", f"Generated {len(findings)} findings")
-        emit_job_event(job.id, "rule_analysis", "completed", "Rule-based analysis complete", f"Generated {len(findings)} findings")
+        emit_job_event(job.id, "rule_analysis", "completed", "Rule-based analysis complete", f"Generated {len(findings)} findings", db=db)
         return self._load_findings(db, job)
 
     def _generate_and_record_reasoning(
@@ -423,7 +447,7 @@ class JobRunner(_JobStorageHelpers):
     ) -> None:
         self._mark(db, job, AnalysisJobStatus.running, 99, "Generating professional reports")
         record_job_stage(job, "report_generation", "running", "Report generation running", "Creating HTML and PDF reports")
-        emit_job_event(job.id, "report_generation", "running", "Report generation running", "Creating HTML and PDF reports")
+        emit_job_event(job.id, "report_generation", "running", "Report generation running", "Creating HTML and PDF reports", db=db)
         html_report_path = HtmlReportGenerator().generate(
             job=job,
             evidence=evidence,
@@ -441,7 +465,7 @@ class JobRunner(_JobStorageHelpers):
         )
         self._record_report(db, job, "pdf", pdf_report_path)
         record_job_stage(job, "report_generation", "completed", "Report generation complete", f"Generated {html_report_path.name} and {pdf_report_path.name}")
-        emit_job_event(job.id, "report_generation", "completed", "Report generation complete", f"Generated {html_report_path.name} and {pdf_report_path.name}")
+        emit_job_event(job.id, "report_generation", "completed", "Report generation complete", f"Generated {html_report_path.name} and {pdf_report_path.name}", db=db)
 
     @staticmethod
     def _complete_job(db: Session, job: AnalysisJob) -> None:
@@ -451,7 +475,7 @@ class JobRunner(_JobStorageHelpers):
         job.completed_at = datetime.utcnow()
         job.updated_at = datetime.utcnow()
         db.commit()
-        emit_job_event(job.id, "job_completed", "completed", job.current_step, None)
+        emit_job_event(job.id, "job_completed", "completed", job.current_step, None, db=db)
 
     @staticmethod
     def _cancel_job(db: Session, job_id: str) -> None:
@@ -465,7 +489,7 @@ class JobRunner(_JobStorageHelpers):
         job.error_message = "Analysis cancelled by user."
         job.updated_at = datetime.utcnow()
         db.commit()
-        emit_job_event(job.id, "cancelled", "cancelled", "Analysis cancelled", "The job was stopped by the user.")
+        emit_job_event(job.id, "job_cancelled", "cancelled", "Analysis cancelled", "The job was stopped by the user.", db=db)
 
     def _fail_decompilation(self, db: Session, job: AnalysisJob, exc: DecompilationError) -> None:
         self._record_decompilation_artifacts(
@@ -483,7 +507,7 @@ class JobRunner(_JobStorageHelpers):
         job.current_step = current_step
         job.updated_at = datetime.utcnow()
         db.commit()
-        emit_job_event(job.id, "job_failed", "failed", current_step, error_message)
+        emit_job_event(job.id, "job_failed", "failed", current_step, error_message, db=db)
 
     @staticmethod
     def _mark(
@@ -613,7 +637,7 @@ def cleanup_interrupted_jobs(settings: Settings) -> int:
         jobs = list(
             db.scalars(
                 select(AnalysisJob).where(
-                    AnalysisJob.status.in_([AnalysisJobStatus.queued, AnalysisJobStatus.running])
+                    AnalysisJob.status == AnalysisJobStatus.running
                 )
             ).all()
         )
@@ -623,4 +647,28 @@ def cleanup_interrupted_jobs(settings: Settings) -> int:
             job.current_step = "Interrupted by backend restart"
             job.updated_at = datetime.utcnow()
         db.commit()
+        for job in jobs:
+            emit_job_event(job.id, "job_failed", "failed", job.current_step, job.error_message, db=db)
         return len(jobs)
+
+
+def dispatch_queued_jobs(settings: Settings) -> int:
+    """Resume durable queued work after startup; the semaphore controls execution."""
+    from app.db.session import SessionLocal
+
+    with SessionLocal() as db:
+        job_ids = list(
+            db.scalars(
+                select(AnalysisJob.id)
+                .where(AnalysisJob.status == AnalysisJobStatus.queued)
+                .order_by(AnalysisJob.created_at.asc())
+            ).all()
+        )
+    for job_id in job_ids:
+        Thread(
+            target=JobRunner(settings).prepare_uploaded_apk,
+            args=(job_id,),
+            daemon=True,
+            name=f"analysis-job-{job_id}",
+        ).start()
+    return len(job_ids)

@@ -8,17 +8,110 @@ import asyncio
 import unittest
 
 from fastapi import HTTPException
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
-from app.api.routes.jobs import _resolve_storage_file, stream_job_events
+from app.api.routes.jobs import _events_after, _resolve_storage_file, stream_job_events
 from app.api.routes.dynamic import _manager
 from app.core.config import Settings
-from app.db.base import AnalysisJobStatus
+from app.db.base import AnalysisJobStatus, Base
 from app.services.job_events import emit_job_event, job_event_store
+from app.services.job_service import JobService, analysis_job_semaphore, dispatch_queued_jobs
 from dynamic.adb.client import AdbResult
 from dynamic.runtime.orchestrator import DynamicAnalysisError, DynamicRuntimeOrchestrator
 
 
 class ConfirmedBugTests(unittest.TestCase):
+    def test_job_history_listing_has_no_persistent_50_item_cap(self) -> None:
+        db = MagicMock()
+        db.scalars.return_value.all.return_value = []
+        JobService(db, Settings()).list_jobs()
+        statement = db.scalars.call_args.args[0]
+        self.assertIsNone(statement._limit_clause)
+
+    def test_event_history_is_durable_and_cache_cleanup_is_recoverable(self) -> None:
+        engine = create_engine("sqlite+pysqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        session_factory = sessionmaker(bind=engine)
+        db = session_factory()
+        job_id = "durable-history"
+        job_event_store.clear(job_id)
+        for index in range(3):
+            emit_job_event(job_id, f"stage-{index}", "running", f"Stage {index}", db=db)
+
+        original_limit = job_event_store.MAX_CACHED_EVENTS_PER_JOB
+        job_event_store.MAX_CACHED_EVENTS_PER_JOB = 2
+        try:
+            emit_job_event(job_id, "stage-3", "completed", "Done", db=db)
+            emit_job_event(job_id, "job_completed", "completed", "Finished", db=db)
+            self.assertEqual(len(job_event_store.snapshot(job_id)), 2)
+            context = MagicMock()
+            context.__enter__.return_value = db
+            context.__exit__.return_value = False
+            with patch("app.api.routes.jobs.SessionLocal", return_value=context):
+                recovered = _events_after(job_id)
+                reconnected = _events_after(job_id, after_event_id=recovered[1].event_id)
+            self.assertEqual(len(recovered), 5)
+            self.assertEqual([event.event_id for event in recovered], sorted(event.event_id for event in recovered))
+            self.assertEqual([event.event_id for event in reconnected], [event.event_id for event in recovered[2:]])
+            self.assertEqual(recovered[-1].stage, "job_completed")
+        finally:
+            job_event_store.MAX_CACHED_EVENTS_PER_JOB = original_limit
+            job_event_store.clear(job_id)
+            db.close()
+
+    def test_multiple_sse_clients_recover_history_after_cache_cleanup(self) -> None:
+        engine = create_engine("sqlite+pysqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        db = sessionmaker(bind=engine)()
+        job_id = "concurrent-history"
+        job_event_store.clear(job_id)
+        emit_job_event(job_id, "job_started", "running", "Started", db=db)
+        emit_job_event(job_id, "job_completed", "completed", "Finished", db=db)
+        job_event_store.clear(job_id)
+        job = SimpleNamespace(status=AnalysisJobStatus.completed, current_step="Finished", error_message=None)
+        request_db = MagicMock()
+        request_db.get.return_value = job
+        context = MagicMock()
+        context.__enter__.return_value = db
+        context.__exit__.return_value = False
+        with patch("app.api.routes.jobs.SessionLocal", return_value=context):
+            first = stream_job_events(job_id, db=request_db, settings=Settings())
+            second = stream_job_events(job_id, db=request_db, settings=Settings())
+
+            async def collect(response: object) -> list[bytes]:
+                return [chunk async for chunk in response.body_iterator]
+
+            async def collect_both() -> tuple[list[bytes], list[bytes]]:
+                return await asyncio.gather(collect(first), collect(second))
+
+            first_chunks, second_chunks = asyncio.run(collect_both())
+        self.assertEqual(len(first_chunks), 2)
+        self.assertEqual(len(second_chunks), 2)
+        self.assertIn("job_started", first_chunks[0])
+        self.assertIn("job_completed", second_chunks[1])
+        job_event_store.clear(job_id)
+        db.close()
+
+    def test_analysis_concurrency_limit_and_queued_dispatch(self) -> None:
+        settings = SimpleNamespace(max_concurrent_analysis_jobs=2)
+        semaphore = analysis_job_semaphore(settings)
+        self.assertTrue(semaphore.acquire(blocking=False))
+        self.assertTrue(semaphore.acquire(blocking=False))
+        self.assertFalse(semaphore.acquire(blocking=False))
+        semaphore.release()
+        semaphore.release()
+
+        fake_db = MagicMock()
+        fake_db.scalars.return_value.all.return_value = ["queued-1", "queued-2"]
+        context = MagicMock()
+        context.__enter__.return_value = fake_db
+        context.__exit__.return_value = False
+        with patch("app.db.session.SessionLocal", return_value=context), \
+            patch("app.services.job_service.Thread") as thread:
+            self.assertEqual(dispatch_queued_jobs(settings), 2)
+        self.assertEqual(thread.call_count, 2)
+
     def _settings(self, root: Path) -> SimpleNamespace:
         return SimpleNamespace(
             dynamic_baseline_seconds=0,
@@ -115,7 +208,7 @@ class ConfirmedBugTests(unittest.TestCase):
         job_event_store.clear(job_id)
         emit_job_event(job_id, "job_completed", "completed", "Done")
         with patch("app.api.routes.jobs.SessionLocal", return_value=session), \
-            patch.object(job_event_store, "wait_for", return_value=[]):
+            patch("app.api.routes.jobs.asyncio.to_thread", new=AsyncMock(return_value=[])):
             response = stream_job_events(job_id, db=initial_db, settings=Settings())
             async def collect() -> list[bytes]:
                 return [chunk async for chunk in response.body_iterator]
@@ -132,7 +225,7 @@ class ConfirmedBugTests(unittest.TestCase):
             state_db.get.return_value = terminal_job
             job_event_store.clear(terminal_id)
             with patch("app.api.routes.jobs.SessionLocal", return_value=session), \
-                patch("app.api.routes.jobs.asyncio.sleep", new=AsyncMock()), \
+                patch("app.api.routes.jobs.asyncio.to_thread", new=AsyncMock(return_value=[])), \
                 patch("app.api.routes.jobs.TERMINAL_EVENT_GRACE_SECONDS", 0.0):
                 response = stream_job_events(terminal_id, db=initial_db, settings=Settings())
 
@@ -159,7 +252,7 @@ class ConfirmedBugTests(unittest.TestCase):
             emit_job_event(job_id, "job_started", "running", "Started")
             emit_job_event(job_id, f"job_{terminal_status.value}", terminal_status.value, "Finished")
             with patch("app.api.routes.jobs.SessionLocal", return_value=session), \
-                patch("app.api.routes.jobs.asyncio.sleep", new=AsyncMock()):
+                patch("app.api.routes.jobs.asyncio.to_thread", new=AsyncMock(return_value=[])):
                 response = stream_job_events(job_id, db=initial_db, settings=Settings())
 
                 async def collect_ordered() -> list[bytes]:
@@ -184,11 +277,12 @@ class ConfirmedBugTests(unittest.TestCase):
         job_event_store.clear(job_id)
         emit_job_event(job_id, "job_started", "running", "Started")
 
-        async def publish_after_database_state(_delay: float) -> None:
+        async def publish_after_database_state(_function: object, *_args: object) -> list[object]:
             emit_job_event(job_id, "job_failed", "failed", "Failed", "failure")
+            return []
 
         with patch("app.api.routes.jobs.SessionLocal", return_value=session), \
-            patch("app.api.routes.jobs.asyncio.sleep", new=publish_after_database_state):
+            patch("app.api.routes.jobs.asyncio.to_thread", new=publish_after_database_state):
             response = stream_job_events(job_id, db=initial_db, settings=Settings())
 
             async def collect_race() -> list[bytes]:
