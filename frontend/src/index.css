@@ -1,0 +1,186 @@
+﻿@import 'tailwindcss';
+@import 'tw-animate-css';
+@plugin "@tailwindcss/typography";
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  --color-critical: #ef4444;
+  --color-high: #f97316;
+  --color-medium: #eab308;
+  --color-low: #3b82f6;
+  --color-info: #6b7280;
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "Cascadia Code", Consolas, "Courier New", monospace;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  color-scheme: dark;
+  --background: #0a0e13;
+  --foreground: #f8fafb;
+  --border: #1e2a35;
+  --input: #1e2a35;
+  --ring: #00d4aa;
+
+  --card: #111820;
+  --card-foreground: #f8fafb;
+
+  --popover: #111820;
+  --popover-foreground: #f8fafb;
+
+  --primary: #00d4aa;
+  --primary-foreground: #000000;
+
+  --secondary: #1e2a35;
+  --secondary-foreground: #f8fafb;
+
+  --muted: #1e2a35;
+  --muted-foreground: #8fa2aa;
+
+  --accent: #00d4aa;
+  --accent-foreground: #000000;
+
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+
+  --sidebar: #0a0e13;
+  --sidebar-foreground: #f8fafb;
+
+  --radius: 0.5rem;
+}
+
+.dark {
+  /* same as root, locked to dark */
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply font-sans antialiased bg-background text-foreground selection:bg-accent/30 selection:text-foreground;
+  }
+}
+
+@layer utilities {
+  @keyframes pulse-ring {
+    0% { box-shadow: 0 0 0 0 rgba(0, 212, 170, 0.4); }
+    70% { box-shadow: 0 0 0 8px rgba(0, 212, 170, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(0, 212, 170, 0); }
+  }
+
+  .pulse-accent {
+    animation: pulse-ring 2s infinite;
+  }
+
+  @keyframes upload-pulse {
+    0% { border-color: #1e2a35; }
+    50% { border-color: #00d4aa; }
+    100% { border-color: #1e2a35; }
+  }
+  .uploading-border {
+    animation: upload-pulse 1.5s infinite;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+  .blink-dot {
+    animation: blink 1.5s infinite;
+  }
+
+  .scanline {
+    background: linear-gradient(
+      to bottom,
+      rgba(255,255,255,0),
+      rgba(255,255,255,0) 50%,
+      rgba(0,0,0,0.1) 50%,
+      rgba(0,0,0,0.1)
+    );
+    background-size: 100% 4px;
+  }
+
+  .shimmer {
+    background: #1e2a35;
+    background-image: linear-gradient(
+      to right,
+      #1e2a35 0%,
+      #2a3b4a 20%,
+      #1e2a35 40%,
+      #1e2a35 100%
+    );
+    background-repeat: no-repeat;
+    background-size: 800px 100%;
+    animation-duration: 1.5s;
+    animation-fill-mode: forwards;
+    animation-iteration-count: infinite;
+    animation-name: placeholderShimmer;
+    animation-timing-function: linear;
+  }
+
+  @keyframes placeholderShimmer {
+    0% { background-position: -468px 0; }
+    100% { background-position: 468px 0; }
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #1e2a35;
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #2a3b4a;
+  }
+
+  /* For horizontal scroll container */
+  .scrollbar-hide::-webkit-scrollbar {
+      display: none;
+  }
+  .scrollbar-hide {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+  }
+}
