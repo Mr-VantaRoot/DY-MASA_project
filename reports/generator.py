@@ -286,8 +286,21 @@ class HtmlReportGenerator:
             )
         rows = "\n".join(rows)
         limits_note = ""
-        if any(item.evidence_type == "extraction_limits" for item in runtime_evidence):
-            limits_note = "<p><strong>Extraction limits:</strong> reported for transparency; these limits do not create findings.</p>"
+        limit_items = [item for item in runtime_evidence if item.evidence_type == "extraction_limits"]
+        if limit_items:
+            details = []
+            for item in limit_items:
+                try:
+                    payload = json.loads(item.value_json)
+                except json.JSONDecodeError:
+                    payload = {}
+                for name, values in payload.items():
+                    if not isinstance(values, dict):
+                        continue
+                    noteworthy = {key: value for key, value in values.items() if key not in {"max_file_bytes", "max_evidence_per_rule"} and value not in (0, False, [], {})}
+                    if noteworthy:
+                        details.append(f"{name}: {json.dumps(noteworthy, sort_keys=True)}")
+            limits_note = "<p><strong>Extraction coverage:</strong> reported for transparency; " + escape("; ".join(details) or "no limits reached") + ".</p>"
         return f"""
 <h2>DY-MASA Runtime Evidence</h2>
 <p>Captured during emulator/device execution. This section records observed runtime activity and artifacts; it does not assert vulnerability exploitability.</p>
@@ -552,8 +565,20 @@ class PdfReportGenerator:
                 payload = {}
             rows.append([item.evidence_type, str(payload.get("result", "observed")).upper(), item.label, item.source_path])
         limits_note = []
-        if any(item.evidence_type == "extraction_limits" for item in runtime_evidence):
-            limits_note = [Paragraph("Extraction limits are reported for transparency and do not create findings.", body)]
+        limit_items = [item for item in runtime_evidence if item.evidence_type == "extraction_limits"]
+        if limit_items:
+            details = []
+            for item in limit_items:
+                try:
+                    payload = json.loads(item.value_json)
+                except json.JSONDecodeError:
+                    payload = {}
+                for name, values in payload.items():
+                    if isinstance(values, dict):
+                        noteworthy = {key: value for key, value in values.items() if key not in {"max_file_bytes", "max_evidence_per_rule"} and value not in (0, False, [], {})}
+                        if noteworthy:
+                            details.append(f"{name}: {json.dumps(noteworthy, sort_keys=True)}")
+            limits_note = [Paragraph("Extraction coverage: " + escape("; ".join(details) or "no limits reached") + ".", body)]
         return [
             Spacer(1, 0.2 * inch),
             Paragraph("DY-MASA Runtime Evidence", heading),

@@ -105,35 +105,45 @@ class ManifestEvidenceExtractor:
 
         application = root.find("application")
         if application is not None:
-            evidence.extend(self._application_flags(application, manifest_path))
-            evidence.extend(self._components(application, manifest_path))
+            target_sdk = self._uses_sdk_value(root, "targetSdkVersion")
+            evidence.extend(self._application_flags(application, manifest_path, target_sdk))
+            evidence.extend(self._components(application, manifest_path, target_sdk))
 
         return evidence
 
     def _permissions(self, root: ET.Element, manifest_path: Path) -> list[EvidenceItem]:
         evidence: list[EvidenceItem] = []
-        for permission in root.findall("uses-permission"):
-            name = self._android_attr(permission, "name")
-            if not name:
-                continue
-            is_dangerous = name in DANGEROUS_PERMISSIONS
-            evidence.append(
-                EvidenceItem(
-                    category=EvidenceCategory.permission,
-                    evidence_type="dangerous_permission" if is_dangerous else "permission",
-                    label=name,
-                    value={"name": name, "dangerous": is_dangerous},
-                    source_path=manifest_path,
-                    source_node="uses-permission",
+        for tag in ("uses-permission", "uses-permission-sdk-23", "uses-permission-sdk-m"):
+            for permission in root.findall(tag):
+                name = self._android_attr(permission, "name")
+                if not name:
+                    continue
+                is_dangerous = name in DANGEROUS_PERMISSIONS
+                evidence.append(
+                    EvidenceItem(
+                        category=EvidenceCategory.permission,
+                        evidence_type="dangerous_permission" if is_dangerous else "permission",
+                        label=name,
+                        value={"name": name, "dangerous": is_dangerous, "declaration_tag": tag},
+                        source_path=manifest_path,
+                        source_node=tag,
+                    )
                 )
-            )
         return evidence
 
-    def _application_flags(self, application: ET.Element, manifest_path: Path) -> list[EvidenceItem]:
+    def _application_flags(self, application: ET.Element, manifest_path: Path, target_sdk: str | None) -> list[EvidenceItem]:
+        target = self._sdk_int(target_sdk)
+        allow_backup = self._android_attr(application, "allowBackup")
+        cleartext = self._android_attr(application, "usesCleartextTraffic")
         flags = {
             "debuggable": self._android_attr(application, "debuggable"),
-            "allow_backup": self._android_attr(application, "allowBackup"),
-            "uses_cleartext_traffic": self._android_attr(application, "usesCleartextTraffic"),
+            "allow_backup": allow_backup,
+            "allow_backup_effective": allow_backup if allow_backup is not None else "true",
+            "allow_backup_implicit": allow_backup is None,
+            "uses_cleartext_traffic": cleartext,
+            "uses_cleartext_traffic_effective": cleartext if cleartext is not None else ("false" if target is not None and target >= 28 else "true"),
+            "uses_cleartext_traffic_implicit": cleartext is None,
+            "target_sdk": target_sdk,
             "network_security_config": self._android_attr(application, "networkSecurityConfig"),
         }
         return [
@@ -147,7 +157,7 @@ class ManifestEvidenceExtractor:
             )
         ]
 
-    def _components(self, application: ET.Element, manifest_path: Path) -> list[EvidenceItem]:
+    def _components(self, application: ET.Element, manifest_path: Path, target_sdk: str | None) -> list[EvidenceItem]:
         evidence: list[EvidenceItem] = []
         for tag, component_type in self.COMPONENT_TAGS.items():
             for component in application.findall(tag):
@@ -171,9 +181,14 @@ class ManifestEvidenceExtractor:
                             "exported": exported,
                             "exported_effective": exported_effective,
                             "exported_implicit": exported_implicit,
+                            "exported_default_rule": "intent-filter implies exported for legacy platform behavior" if exported_implicit else None,
+                            "exported_required_for_install": bool(exported is None and intent_filters and self._sdk_int(target_sdk) is not None and self._sdk_int(target_sdk) >= 31),
                             "launcher_entry": self._launcher_entry(component_type, intent_filters),
                             "intent_filter_count": len(intent_filters),
                             "permission": self._android_attr(component, "permission"),
+                            "read_permission": self._android_attr(component, "readPermission"),
+                            "write_permission": self._android_attr(component, "writePermission"),
+                            "grant_uri_permissions": self._android_attr(component, "grantUriPermissions"),
                             "authorities": self._android_attr(component, "authorities"),
                         },
                         source_path=manifest_path,
@@ -207,30 +222,47 @@ class ManifestEvidenceExtractor:
         manifest_path: Path,
     ) -> list[EvidenceItem]:
         evidence: list[EvidenceItem] = []
-        for intent_filter in intent_filters:
+        data_attributes = ("scheme", "host", "port", "path", "pathPrefix", "pathPattern", "pathAdvancedPattern", "mimeType", "schemeSpecificPart")
+        for filter_index, intent_filter in enumerate(intent_filters, start=1):
+            data_elements = []
             for data in intent_filter.findall("data"):
-                scheme = self._android_attr(data, "scheme")
-                host = self._android_attr(data, "host")
-                path = self._android_attr(data, "path") or self._android_attr(data, "pathPrefix")
-                if not any([scheme, host, path]):
-                    continue
-                evidence.append(
-                    EvidenceItem(
-                        category=EvidenceCategory.deep_link,
-                        evidence_type="deep_link",
-                        label=f"{scheme or '*'}://{host or '*'}{path or ''}",
-                        value={
-                            "component_name": component_name,
-                            "component_type": component_type,
-                            "scheme": scheme,
-                            "host": host,
-                            "path": path,
-                            "mime_type": self._android_attr(data, "mimeType"),
-                        },
-                        source_path=manifest_path,
-                        source_node="intent-filter/data",
-                    )
+                attributes = {name: self._android_attr(data, name) for name in data_attributes}
+                if any(attributes.values()):
+                    data_elements.append({key: value for key, value in attributes.items() if value is not None})
+            if not data_elements:
+                continue
+            schemes = sorted({str(item["scheme"]) for item in data_elements if item.get("scheme")})
+            hosts = sorted({str(item["host"]) for item in data_elements if item.get("host")})
+            paths = sorted({str(item.get(path_key)) for item in data_elements for path_key in ("path", "pathPrefix", "pathPattern", "pathAdvancedPattern") if item.get(path_key)})
+            scheme = schemes[0] if len(schemes) == 1 else None
+            host = hosts[0] if len(hosts) == 1 else None
+            path = paths[0] if len(paths) == 1 else None
+            wildcard = not schemes or not hosts or any("*" in value for value in (*schemes, *hosts, *paths))
+            actions = sorted(filter(None, (self._android_attr(action, "name") for action in intent_filter.findall("action"))))
+            categories = sorted(filter(None, (self._android_attr(category, "name") for category in intent_filter.findall("category"))))
+            label = f"{scheme or '*'}://{host or '*'}{path or ''}"
+            evidence.append(
+                EvidenceItem(
+                    category=EvidenceCategory.deep_link,
+                    evidence_type="deep_link",
+                    label=label,
+                    value={
+                        "component_name": component_name,
+                        "component_type": component_type,
+                        "scheme": scheme,
+                        "host": host,
+                        "path": path,
+                        "mime_type": data_elements[0].get("mimeType"),
+                        "actions": actions,
+                        "categories": categories,
+                        "data_elements": data_elements,
+                        "filter_index": filter_index,
+                        "scope": "wildcard_or_missing_constraint" if wildcard else "explicit_scheme_host",
+                    },
+                    source_path=manifest_path,
+                    source_node=f"intent-filter[{filter_index}]/data",
                 )
+            )
         return evidence
 
     @staticmethod
@@ -242,6 +274,13 @@ class ManifestEvidenceExtractor:
         if uses_sdk is None:
             return None
         return self._android_attr(uses_sdk, name)
+
+    @staticmethod
+    def _sdk_int(value: str | None) -> int | None:
+        try:
+            return int(value) if value is not None else None
+        except ValueError:
+            return None
 
 
 class CodeSecretEvidenceExtractor:
@@ -277,6 +316,11 @@ class CodeSecretEvidenceExtractor:
             "max_evidence": self.MAX_EVIDENCE,
             "emitted": 0,
             "truncated": False,
+            "files_seen": 0,
+            "files_scanned": 0,
+            "files_skipped_size": 0,
+            "unreadable_files": 0,
+            "unreadable_file_samples": [],
         }
 
     def extract(self, *roots: Path) -> list[EvidenceItem]:
@@ -285,15 +329,24 @@ class CodeSecretEvidenceExtractor:
             if not root.exists():
                 continue
             for path in root.rglob("*"):
+                self.limit_metadata["files_seen"] += 1
                 if len(evidence) >= self.MAX_EVIDENCE:
                     self.limit_metadata.update(emitted=len(evidence), truncated=True)
                     return evidence
-                if not path.is_file() or path.suffix.lower() not in self.EXTENSIONS:
+                try:
+                    is_candidate = path.is_file() and path.suffix.lower() in self.EXTENSIONS
+                    size = path.stat().st_size if is_candidate else 0
+                except OSError:
+                    self._record_unreadable(path)
+                    continue
+                if not is_candidate:
                     continue
                 if self._is_excluded_resource_file(path):
                     continue
-                if path.stat().st_size > self.MAX_FILE_BYTES:
+                if size > self.MAX_FILE_BYTES:
+                    self.limit_metadata["files_skipped_size"] += 1
                     continue
+                self.limit_metadata["files_scanned"] += 1
                 evidence.extend(self._scan_file(path))
                 if len(evidence) >= self.MAX_EVIDENCE:
                     self.limit_metadata.update(emitted=self.MAX_EVIDENCE, truncated=True)
@@ -309,6 +362,7 @@ class CodeSecretEvidenceExtractor:
         try:
             lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
         except OSError:
+            self._record_unreadable(path)
             return results
         for line_number, line in enumerate(lines, start=1):
             candidate_value = self._extract_assignment_value(line)
@@ -316,6 +370,12 @@ class CodeSecretEvidenceExtractor:
                 continue
             results.extend(self._evidence_for_value(path, line_number, line, candidate_value))
         return results
+
+    def _record_unreadable(self, path: Path) -> None:
+        self.limit_metadata["unreadable_files"] += 1
+        samples = self.limit_metadata["unreadable_file_samples"]
+        if len(samples) < 10:
+            samples.append(str(path))
 
     @staticmethod
     def _is_excluded_resource_file(path: Path) -> bool:

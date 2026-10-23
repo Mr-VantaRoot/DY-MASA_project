@@ -2,7 +2,6 @@ import json
 import asyncio
 import time
 from pathlib import Path
-from threading import Thread
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse, StreamingResponse
@@ -39,7 +38,7 @@ from app.schemas.jobs import (
     AnalysisReasoningResponse,
 )
 from app.services.job_events import JobStageEvent, as_event_payload, job_event_store
-from app.services.job_service import JobRunner, JobService
+from app.services.job_service import JobService, submit_analysis_job
 
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -84,7 +83,13 @@ def _events_after(job_id: str, after_event_id: int = 0) -> list[JobStageEvent]:
     events_by_id = {event.event_id: event for event in _persistent_events(job_id, after_event_id)}
     for event in job_event_store.snapshot(job_id, after_event_id=after_event_id):
         events_by_id.setdefault(event.event_id, event)
-    return [events_by_id[event_id] for event_id in sorted(events_by_id)]
+    return [
+        event
+        for _, event in sorted(
+            events_by_id.items(),
+            key=lambda pair: (-pair[0] if pair[0] < 0 else pair[0], pair[0] < 0),
+        )
+    ]
 
 
 def _sse_event(event: JobStageEvent) -> str:
@@ -104,12 +109,7 @@ def upload_apk(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     if job.status == AnalysisJobStatus.queued:
-        Thread(
-            target=JobRunner(settings).prepare_uploaded_apk,
-            args=(job.id,),
-            daemon=True,
-            name=f"analysis-job-{job.id}",
-        ).start()
+        submit_analysis_job(settings, job.id)
     return AnalysisJobResponse.model_validate(job)
 
 
@@ -180,7 +180,10 @@ def stream_job_events(
         terminal_deadline: float | None = None
         initial_events = _events_after(job_id, current_event_id)
         for event in initial_events:
-            current_event_id = max(current_event_id, event.event_id)
+            if event.event_id < 0:
+                current_event_id = event.event_id if current_event_id >= 0 else min(current_event_id, event.event_id)
+            else:
+                current_event_id = max(current_event_id, event.event_id)
             terminal_event_seen = terminal_event_seen or event.stage in TERMINAL_EVENT_STAGES
             yield _sse_event(event)
         if terminal_event_seen:
@@ -192,7 +195,10 @@ def stream_job_events(
             await asyncio.to_thread(job_event_store.wait_for, job_id, current_event_id, 2.0)
             new_events = _events_after(job_id, current_event_id)
             for event in new_events:
-                current_event_id = max(current_event_id, event.event_id)
+                if event.event_id < 0:
+                    current_event_id = event.event_id if current_event_id >= 0 else min(current_event_id, event.event_id)
+                else:
+                    current_event_id = max(current_event_id, event.event_id)
                 terminal_event_seen = terminal_event_seen or event.stage in TERMINAL_EVENT_STAGES
                 yield _sse_event(event)
             if terminal_event_seen:
@@ -213,8 +219,8 @@ def stream_job_events(
                 elif time.monotonic() >= terminal_deadline:
                     fallback = JobStageEvent(
                         event_id=current_event_id + 1,
-                        stage=f"job_{job.status.value}",
-                        status=job.status.value,
+                        stage=f"job_{getattr(job.status, 'value', job.status)}",
+                        status=getattr(job.status, "value", job.status),
                         message=job.current_step,
                         detail=job.error_message,
                     )

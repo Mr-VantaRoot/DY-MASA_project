@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import defaultdict, deque
 from dataclasses import dataclass
 from datetime import datetime
 from threading import Condition, Lock
@@ -22,11 +22,14 @@ class JobStageEvent:
 
 
 class JobEventStore:
-    MAX_CACHED_EVENTS_PER_JOB = 512
+    # This is only a live notification cache. Durable events remain in the DB.
+    MAX_CACHED_EVENTS = 2048
 
     def __init__(self) -> None:
         self._history: dict[str, list[JobStageEvent]] = defaultdict(list)
-        self._sequence = 0
+        self._database_sequence = 0
+        self._memory_sequence = -1
+        self._cache_order: deque[tuple[str, int]] = deque()
         self._lock = Lock()
         self._condition = Condition(self._lock)
 
@@ -43,10 +46,12 @@ class JobEventStore:
     ) -> None:
         with self._condition:
             if event_id is None:
-                self._sequence += 1
-                event_id = self._sequence
+                # Cache-only events use a separate negative namespace. Production
+                # events use PostgreSQL/SQLite's positive global primary key.
+                event_id = self._memory_sequence
+                self._memory_sequence -= 1
             else:
-                self._sequence = max(self._sequence, event_id)
+                self._database_sequence = max(self._database_sequence, event_id)
             event = JobStageEvent(
                 event_id=event_id,
                 stage=stage,
@@ -56,30 +61,53 @@ class JobEventStore:
                 timestamp=timestamp or datetime.utcnow().isoformat(timespec="seconds"),
             )
             self._history[job_id].append(event)
-            if persistent and len(self._history[job_id]) > self.MAX_CACHED_EVENTS_PER_JOB:
-                self._history[job_id] = self._history[job_id][-self.MAX_CACHED_EVENTS_PER_JOB :]
+            self._cache_order.append((job_id, event_id))
+            cached_count = sum(len(events) for events in self._history.values())
+            while cached_count > self.MAX_CACHED_EVENTS:
+                if not self._cache_order:
+                    break
+                oldest_job, oldest_id = self._cache_order.popleft()
+                events = self._history.get(oldest_job, [])
+                for index, candidate in enumerate(events):
+                    if candidate.event_id == oldest_id:
+                        events.pop(index)
+                        cached_count -= 1
+                        break
+                if not events:
+                    self._history.pop(oldest_job, None)
             self._condition.notify_all()
 
     def snapshot(self, job_id: str, after_event_id: int = 0) -> list[JobStageEvent]:
         with self._condition:
-            return [event for event in self._history.get(job_id, []) if event.event_id > after_event_id]
+            return [event for event in self._history.get(job_id, []) if self._after(event.event_id, after_event_id)]
 
     def clear(self, job_id: str) -> None:
         with self._condition:
             self._history.pop(job_id, None)
+            self._cache_order = deque(candidate for candidate in self._cache_order if candidate[0] != job_id)
+            # Clear is intentionally cache-only and never touches durable history.
             self._condition.notify_all()
 
     def wait_for(self, job_id: str, after_event_id: int = 0, timeout_seconds: float = 2.0) -> list[JobStageEvent]:
         with self._condition:
             deadline = datetime.utcnow().timestamp() + timeout_seconds
             while True:
-                new_events = [event for event in self._history.get(job_id, []) if event.event_id > after_event_id]
+                new_events = [event for event in self._history.get(job_id, []) if self._after(event.event_id, after_event_id)]
                 if new_events:
                     return new_events
                 remaining = deadline - datetime.utcnow().timestamp()
                 if remaining <= 0:
                     return []
                 self._condition.wait(timeout=remaining)
+
+    @staticmethod
+    def _after(event_id: int, after_event_id: int) -> bool:
+        # Negative IDs belong to the isolated cache-only namespace. They must
+        # still be visible to a fresh stream, while positive persisted IDs use
+        # normal Last-Event-ID ordering.
+        if event_id < 0 and after_event_id < 0:
+            return event_id < after_event_id
+        return event_id > after_event_id or (after_event_id == 0 and event_id < 0)
 
 
 job_event_store = JobEventStore()

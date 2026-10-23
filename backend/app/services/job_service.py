@@ -6,7 +6,8 @@ from uuid import uuid4
 import hashlib
 import json
 import shutil
-from threading import BoundedSemaphore, Lock, Thread
+from concurrent.futures import ThreadPoolExecutor
+from threading import RLock
 import zipfile
 
 from fastapi import UploadFile
@@ -37,18 +38,45 @@ from app.services.job_events import emit_job_event, job_event_store
 from reports.generator import HtmlReportGenerator, PdfReportGenerator
 
 
-_analysis_semaphores: dict[int, BoundedSemaphore] = {}
-_analysis_semaphore_lock = Lock()
+_analysis_executors: dict[int, ThreadPoolExecutor] = {}
+_submitted_jobs: set[str] = set()
+_executor_lock = RLock()
 
 
-def analysis_job_semaphore(settings: Settings) -> BoundedSemaphore:
+def analysis_executor(settings: Settings) -> ThreadPoolExecutor:
+    """Return a bounded worker pool; queued jobs remain durable in PostgreSQL."""
     limit = max(1, int(settings.max_concurrent_analysis_jobs))
-    with _analysis_semaphore_lock:
-        semaphore = _analysis_semaphores.get(limit)
-        if semaphore is None:
-            semaphore = BoundedSemaphore(limit)
-            _analysis_semaphores[limit] = semaphore
-        return semaphore
+    with _executor_lock:
+        executor = _analysis_executors.get(limit)
+        if executor is None:
+            executor = ThreadPoolExecutor(max_workers=limit, thread_name_prefix="masa-analysis")
+            _analysis_executors[limit] = executor
+        return executor
+
+
+def _submit_job(settings: Settings, job_id: str, target: object, *args: object) -> bool:
+    with _executor_lock:
+        if job_id in _submitted_jobs:
+            return False
+        _submitted_jobs.add(job_id)
+        future = analysis_executor(settings).submit(target, *args)
+
+    def release(_future: object) -> None:
+        with _executor_lock:
+            _submitted_jobs.discard(job_id)
+
+    future.add_done_callback(release)
+    return True
+
+
+def submit_analysis_job(settings: Settings, job_id: str) -> bool:
+    return _submit_job(settings, job_id, JobRunner(settings).prepare_uploaded_apk, job_id)
+
+
+def submit_dynamic_job(settings: Settings, job_id: str, stage_id: int) -> bool:
+    from app.api.routes.dynamic import _run_dynamic
+
+    return _submit_job(settings, job_id, _run_dynamic, job_id, stage_id, settings)
 
 
 @dataclass(frozen=True)
@@ -264,50 +292,42 @@ class JobRunner(_JobStorageHelpers):
     def prepare_uploaded_apk(self, job_id: str) -> None:
         from app.db.session import SessionLocal
 
-        semaphore = analysis_job_semaphore(self._settings)
-        semaphore.acquire()
-        try:
-            with SessionLocal() as db:
-                job = db.get(AnalysisJob, job_id)
-                if job is None:
-                    return
+        with SessionLocal() as db:
+            job = db.get(AnalysisJob, job_id)
+            if job is None or job.status != AnalysisJobStatus.queued:
+                return
 
-                cancel_event = job_cancellation_registry.register(job_id)
-                try:
-                    self._raise_if_cancelled(job.id)
-                    workspace_path = self._prepare_workspace(db, job)
-                    self._raise_if_cancelled(job.id)
-                    self._record_upload_metadata(db, job, workspace_path)
-                    self._raise_if_cancelled(job.id)
-                    decompilation = self._decompile_apk(db, job, workspace_path, cancel_event)
-                    self._raise_if_cancelled(job.id)
-                    persisted_evidence = self._extract_and_record_evidence(db, job, decompilation)
-                    self._raise_if_cancelled(job.id)
-                    persisted_findings = self._generate_and_record_findings(db, job, persisted_evidence)
-                    self._raise_if_cancelled(job.id)
-                    persisted_reasoning = self._generate_and_record_reasoning(
-                        db,
-                        job,
-                        persisted_evidence,
-                        persisted_findings,
-                    )
-                    self._raise_if_cancelled(job.id)
-                    self._generate_and_record_reports(db, job, persisted_evidence, persisted_findings, persisted_reasoning)
-                    self._raise_if_cancelled(job.id)
-                    self._complete_job(db, job)
-                except (JobCancelled, DecompilationCancelled):
+            cancel_event = job_cancellation_registry.register(job_id)
+            try:
+                self._raise_if_cancelled(job.id)
+                workspace_path = self._prepare_workspace(db, job)
+                self._raise_if_cancelled(job.id)
+                self._record_upload_metadata(db, job, workspace_path)
+                self._raise_if_cancelled(job.id)
+                decompilation = self._decompile_apk(db, job, workspace_path, cancel_event)
+                self._raise_if_cancelled(job.id)
+                persisted_evidence = self._extract_and_record_evidence(db, job, decompilation)
+                self._raise_if_cancelled(job.id)
+                persisted_findings = self._generate_and_record_findings(db, job, persisted_evidence)
+                self._raise_if_cancelled(job.id)
+                persisted_reasoning = self._generate_and_record_reasoning(
+                    db, job, persisted_evidence, persisted_findings
+                )
+                self._raise_if_cancelled(job.id)
+                self._generate_and_record_reports(db, job, persisted_evidence, persisted_findings, persisted_reasoning)
+                self._raise_if_cancelled(job.id)
+                self._complete_job(db, job)
+            except (JobCancelled, DecompilationCancelled):
+                self._cancel_job(db, job_id)
+            except DecompilationError as exc:
+                self._fail_decompilation(db, job, exc)
+            except Exception as exc:
+                if job_cancellation_registry.is_cancelled(job_id):
                     self._cancel_job(db, job_id)
-                except DecompilationError as exc:
-                    self._fail_decompilation(db, job, exc)
-                except Exception as exc:
-                    if job_cancellation_registry.is_cancelled(job_id):
-                        self._cancel_job(db, job_id)
-                    else:
-                        self._fail_job(db, job, "APK analysis preparation failed", str(exc))
-                finally:
-                    job_cancellation_registry.clear(job_id)
-        finally:
-            semaphore.release()
+                else:
+                    self._fail_job(db, job, "APK analysis preparation failed", str(exc))
+            finally:
+                job_cancellation_registry.clear(job_id)
 
     def _prepare_workspace(self, db: Session, job: AnalysisJob) -> Path:
         self._mark(db, job, AnalysisJobStatus.running, 20, "Creating analysis workspace")
@@ -653,7 +673,7 @@ def cleanup_interrupted_jobs(settings: Settings) -> int:
 
 
 def dispatch_queued_jobs(settings: Settings) -> int:
-    """Resume durable queued work after startup; the semaphore controls execution."""
+    """Resume durable queued work after startup through the bounded worker pool."""
     from app.db.session import SessionLocal
 
     with SessionLocal() as db:
@@ -664,11 +684,4 @@ def dispatch_queued_jobs(settings: Settings) -> int:
                 .order_by(AnalysisJob.created_at.asc())
             ).all()
         )
-    for job_id in job_ids:
-        Thread(
-            target=JobRunner(settings).prepare_uploaded_apk,
-            args=(job_id,),
-            daemon=True,
-            name=f"analysis-job-{job_id}",
-        ).start()
-    return len(job_ids)
+    return sum(submit_analysis_job(settings, job_id) for job_id in job_ids)

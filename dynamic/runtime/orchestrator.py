@@ -275,7 +275,7 @@ class DynamicRuntimeOrchestrator:
         job.current_step = message
         job.updated_at = datetime.utcnow()
         db.commit()
-        emit_job_event(job.id, stage, status, message, detail)
+        emit_job_event(job.id, stage, status, message, detail, db=db)
 
     def _record_evidence(self, db: Session, job: AnalysisJob, evidence_type: str, label: str, value: dict[str, object]) -> None:
         db.add(AnalysisEvidence(

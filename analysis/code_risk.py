@@ -60,11 +60,13 @@ class CodeRiskEvidenceExtractor:
             evidence_type="trust_all_ssl",
             label="Trust-all TLS implementation",
             pattern=re.compile(
-                r"checkServerTrusted\s*\([^)]*\)\s*\{?\s*\}?|X509TrustManager|TrustAll|ALLOW_ALL_HOSTNAME_VERIFIER",
+                r"(?:\bTrustAll\w*\b|\bALLOW_ALL_HOSTNAME_VERIFIER\b|"
+                r"checkServerTrusted\s*\([^)]*\)\s*\{\s*(?:return\s*;|return\s+(?:true|null)\s*;?)?\s*\}|"
+                r"\bHostnameVerifier\b[\s\S]{0,500}?verify\s*\([^)]*\)\s*\{\s*return\s+true\s*;?\s*\})",
                 re.IGNORECASE,
             ),
             confidence="medium",
-            description="TLS trust-management code was found and should be reviewed for trust-all certificate validation.",
+            description="A permissive TLS trust or hostname-verification implementation was found; verify reachability and production use.",
         ),
         CodeRiskRule(
             evidence_type="weak_crypto_mode",
@@ -102,6 +104,11 @@ class CodeRiskEvidenceExtractor:
             "max_evidence_per_rule": self.MAX_EVIDENCE_PER_RULE,
             "emitted_by_rule": {},
             "truncated_rules": [],
+            "files_seen": 0,
+            "files_scanned": 0,
+            "files_skipped_size": 0,
+            "unreadable_files": 0,
+            "unreadable_file_samples": [],
         }
 
     def extract(self, *roots: Path) -> list[EvidenceItem]:
@@ -111,10 +118,19 @@ class CodeRiskEvidenceExtractor:
             if not root.exists():
                 continue
             for path in root.rglob("*"):
-                if not path.is_file() or path.suffix.lower() not in self.EXTENSIONS:
+                self.limit_metadata["files_seen"] += 1
+                try:
+                    is_candidate = path.is_file() and path.suffix.lower() in self.EXTENSIONS
+                    size = path.stat().st_size if is_candidate else 0
+                except OSError:
+                    self._record_unreadable(path)
                     continue
-                if path.stat().st_size > self.MAX_FILE_BYTES:
+                if not is_candidate:
                     continue
+                if size > self.MAX_FILE_BYTES:
+                    self.limit_metadata["files_skipped_size"] += 1
+                    continue
+                self.limit_metadata["files_scanned"] += 1
                 evidence.extend(self._scan_file(path, seen_per_rule))
         self.limit_metadata["emitted_by_rule"] = dict(seen_per_rule)
         return evidence
@@ -124,14 +140,27 @@ class CodeRiskEvidenceExtractor:
         try:
             lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
         except OSError:
+            self._record_unreadable(path)
             return results
 
+        file_text = "\n".join(lines)
         for line_number, line in enumerate(lines, start=1):
             stripped = line.strip()
             if not stripped:
                 continue
             for rule in self.RULES:
-                match = rule.pattern.search(stripped)
+                material = stripped
+                if rule.evidence_type == "trust_all_ssl":
+                    material = (
+                        file_text
+                        if "HostnameVerifier" in file_text and "verify" in stripped
+                        else (
+                            " ".join(lines[line_number - 1 : line_number + 4])
+                            if any(token in stripped for token in ("checkServerTrusted", "TrustAll", "ALLOW_ALL_HOSTNAME_VERIFIER"))
+                            else stripped
+                        )
+                    )
+                match = rule.pattern.search(material)
                 if not match:
                     continue
                 if self._should_ignore_match(path, rule, match.group(0)):
@@ -160,6 +189,12 @@ class CodeRiskEvidenceExtractor:
                     )
                 )
         return results
+
+    def _record_unreadable(self, path: Path) -> None:
+        self.limit_metadata["unreadable_files"] += 1
+        samples = self.limit_metadata["unreadable_file_samples"]
+        if len(samples) < 10:
+            samples.append(str(path))
 
     def _should_ignore_match(self, path: Path, rule: CodeRiskRule, matched_value: str) -> bool:
         normalized_path = path.as_posix().lower()

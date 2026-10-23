@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from threading import Thread
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -10,7 +9,7 @@ from app.db.base import AnalysisEvidence, AnalysisJobStage, EvidenceCategory
 from app.db.session import get_db
 from app.schemas.jobs import AnalysisEvidenceListResponse, AnalysisEvidenceResponse, AnalysisJobStageListResponse, AnalysisJobStageResponse
 from app.services.job_events import emit_job_event
-from app.services.job_service import JobService
+from app.services.job_service import JobService, submit_dynamic_job
 from dynamic.emulator.manager import EmulatorManager, EmulatorStatus
 from dynamic.runtime.orchestrator import DynamicAnalysisError, DynamicRuntimeOrchestrator
 
@@ -147,7 +146,7 @@ def start_dynamic_analysis(
     db.add(run_stage)
     db.commit()
     db.refresh(run_stage)
-    Thread(target=_run_dynamic, args=(job_id, run_stage.id, settings), daemon=True, name=f"dynamic-job-{job_id}").start()
+    submit_dynamic_job(settings, job_id, run_stage.id)
     return {"status": "accepted", "job_id": job_id}
 
 

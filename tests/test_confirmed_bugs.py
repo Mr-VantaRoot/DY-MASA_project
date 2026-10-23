@@ -15,13 +15,24 @@ from app.api.routes.jobs import _events_after, _resolve_storage_file, stream_job
 from app.api.routes.dynamic import _manager
 from app.core.config import Settings
 from app.db.base import AnalysisJobStatus, Base
-from app.services.job_events import emit_job_event, job_event_store
-from app.services.job_service import JobService, analysis_job_semaphore, dispatch_queued_jobs
+from app.services.job_events import JobEventStore, emit_job_event, job_event_store
+from app.services.job_service import JobService, analysis_executor, dispatch_queued_jobs
 from dynamic.adb.client import AdbResult
 from dynamic.runtime.orchestrator import DynamicAnalysisError, DynamicRuntimeOrchestrator
 
 
 class ConfirmedBugTests(unittest.TestCase):
+    def test_live_cache_is_global_and_cache_only_ids_cannot_collide_with_database_ids(self) -> None:
+        store = JobEventStore()
+        store.MAX_CACHED_EVENTS = 2
+        store.publish("job-a", "one", "running", "one")
+        store.publish("job-b", "two", "running", "two")
+        memory_id = store.snapshot("job-a")[0].event_id
+        store.publish("job-a", "three", "running", "three", event_id=1, persistent=True)
+        self.assertEqual(sum(len(store.snapshot(job)) for job in ("job-a", "job-b")), 2)
+        self.assertNotEqual(memory_id, 1)
+        self.assertLess(memory_id, 0)
+
     def test_job_history_listing_has_no_persistent_50_item_cap(self) -> None:
         db = MagicMock()
         db.scalars.return_value.all.return_value = []
@@ -39,8 +50,8 @@ class ConfirmedBugTests(unittest.TestCase):
         for index in range(3):
             emit_job_event(job_id, f"stage-{index}", "running", f"Stage {index}", db=db)
 
-        original_limit = job_event_store.MAX_CACHED_EVENTS_PER_JOB
-        job_event_store.MAX_CACHED_EVENTS_PER_JOB = 2
+        original_limit = job_event_store.MAX_CACHED_EVENTS
+        job_event_store.MAX_CACHED_EVENTS = 2
         try:
             emit_job_event(job_id, "stage-3", "completed", "Done", db=db)
             emit_job_event(job_id, "job_completed", "completed", "Finished", db=db)
@@ -56,7 +67,7 @@ class ConfirmedBugTests(unittest.TestCase):
             self.assertEqual([event.event_id for event in reconnected], [event.event_id for event in recovered[2:]])
             self.assertEqual(recovered[-1].stage, "job_completed")
         finally:
-            job_event_store.MAX_CACHED_EVENTS_PER_JOB = original_limit
+            job_event_store.MAX_CACHED_EVENTS = original_limit
             job_event_store.clear(job_id)
             db.close()
 
@@ -95,12 +106,7 @@ class ConfirmedBugTests(unittest.TestCase):
 
     def test_analysis_concurrency_limit_and_queued_dispatch(self) -> None:
         settings = SimpleNamespace(max_concurrent_analysis_jobs=2)
-        semaphore = analysis_job_semaphore(settings)
-        self.assertTrue(semaphore.acquire(blocking=False))
-        self.assertTrue(semaphore.acquire(blocking=False))
-        self.assertFalse(semaphore.acquire(blocking=False))
-        semaphore.release()
-        semaphore.release()
+        self.assertEqual(analysis_executor(settings)._max_workers, 2)
 
         fake_db = MagicMock()
         fake_db.scalars.return_value.all.return_value = ["queued-1", "queued-2"]
@@ -108,9 +114,9 @@ class ConfirmedBugTests(unittest.TestCase):
         context.__enter__.return_value = fake_db
         context.__exit__.return_value = False
         with patch("app.db.session.SessionLocal", return_value=context), \
-            patch("app.services.job_service.Thread") as thread:
+            patch("app.services.job_service.submit_analysis_job", side_effect=[True, True]) as submit:
             self.assertEqual(dispatch_queued_jobs(settings), 2)
-        self.assertEqual(thread.call_count, 2)
+        self.assertEqual(submit.call_count, 2)
 
     def _settings(self, root: Path) -> SimpleNamespace:
         return SimpleNamespace(

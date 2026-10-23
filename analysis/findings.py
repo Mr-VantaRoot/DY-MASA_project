@@ -24,6 +24,7 @@ class EvidenceFindingGenerator:
     def generate(self, evidence: list[AnalysisEvidence]) -> list[FindingCandidate]:
         findings: list[FindingCandidate] = []
         findings.extend(self._application_flag_findings(evidence))
+        findings.extend(self._coverage_findings(evidence))
         findings.extend(self._exported_component_findings(evidence))
         findings.extend(self._provider_review_findings(evidence))
         findings.extend(self._deep_link_findings(evidence))
@@ -55,7 +56,8 @@ class EvidenceFindingGenerator:
                         evidence_ids=[item.id],
                     )
                 )
-            if value.get("allow_backup") == "true":
+            if value.get("allow_backup_effective", value.get("allow_backup")) == "true":
+                backup_detail = "The manifest explicitly enables application data backup." if value.get("allow_backup") is not None else "The manifest omits android:allowBackup, so the Android default permits application data backup."
                 findings.append(
                     FindingCandidate(
                         rule_id="android-backup-enabled",
@@ -63,7 +65,7 @@ class EvidenceFindingGenerator:
                         severity=FindingSeverity.medium,
                         category="Application Configuration",
                         description=self._with_metadata(
-                            "The manifest explicitly allows application data backup.",
+                            backup_detail,
                             "Medium because risk depends on whether sensitive local data exists; this static check confirms exposure potential, not data sensitivity.",
                             "MASVS-STORAGE",
                             "5.3",
@@ -72,7 +74,8 @@ class EvidenceFindingGenerator:
                         evidence_ids=[item.id],
                     )
                 )
-            if value.get("uses_cleartext_traffic") == "true":
+            if value.get("uses_cleartext_traffic_effective", value.get("uses_cleartext_traffic")) == "true":
+                cleartext_detail = "The manifest explicitly permits cleartext network traffic." if value.get("uses_cleartext_traffic") is not None else "The manifest omits android:usesCleartextTraffic and the target SDK uses the permissive legacy default."
                 findings.append(
                     FindingCandidate(
                         rule_id="android-cleartext-traffic-enabled",
@@ -80,7 +83,7 @@ class EvidenceFindingGenerator:
                         severity=FindingSeverity.medium,
                         category="Network Security",
                         description=self._with_metadata(
-                            "The manifest explicitly permits cleartext network traffic.",
+                            cleartext_detail,
                             "Medium because this enables plaintext transport if code or configuration uses HTTP endpoints; exploitability requires network path or insecure endpoint usage.",
                             "MASVS-NETWORK",
                             "5.9",
@@ -90,6 +93,43 @@ class EvidenceFindingGenerator:
                     )
                 )
         return findings
+
+    def _coverage_findings(self, evidence: list[AnalysisEvidence]) -> list[FindingCandidate]:
+        incomplete = []
+        for item in evidence:
+            if item.evidence_type != "extraction_limits":
+                continue
+            value = self._value(item)
+            limited = False
+            for details in value.values():
+                if not isinstance(details, dict):
+                    continue
+                limited = limited or bool(
+                    details.get("truncated")
+                    or details.get("truncated_rules")
+                    or details.get("files_skipped_size")
+                    or details.get("unreadable_files")
+                )
+            if limited:
+                incomplete.append(item)
+        if not incomplete:
+            return []
+        return [
+            FindingCandidate(
+                rule_id="analysis-extraction-coverage-incomplete",
+                title="Static extraction coverage was incomplete",
+                severity=FindingSeverity.info,
+                category="Analysis Coverage",
+                description=self._with_metadata(
+                    "Some decompiled files or evidence candidates were skipped, unreadable, or limited by configured extraction caps.",
+                    "Informational because this is a coverage limitation, not a vulnerability claim; findings may be incomplete until the skipped material is reviewed.",
+                    "MASVS-CODE",
+                    "0.0",
+                ),
+                remediation="Review extraction-limits.json and the linked workspace paths; rerun with appropriate limits or inspect skipped files manually.",
+                evidence_ids=[item.id for item in incomplete],
+            )
+        ]
 
     def _exported_component_findings(self, evidence: list[AnalysisEvidence]) -> list[FindingCandidate]:
         components = []
@@ -168,6 +208,11 @@ class EvidenceFindingGenerator:
         findings: list[FindingCandidate] = []
         if providers:
             labels = [item.label for item in providers]
+            permission_summary = "; ".join(
+                f"{item.label}: read={self._value(item).get('read_permission') or 'none'}, "
+                f"write={self._value(item).get('write_permission') or 'none'}"
+                for item in providers
+            )
             findings.append(
                 FindingCandidate(
                     rule_id="android-exported-content-provider-review",
@@ -175,7 +220,7 @@ class EvidenceFindingGenerator:
                     severity=FindingSeverity.medium,
                     category="Exported Components",
                     description=self._with_metadata(
-                        f"Exported content provider evidence was found: {', '.join(labels)}.",
+                        f"Exported content provider evidence was found: {', '.join(labels)}. Declared access controls: {permission_summary}.",
                         "Medium because exported providers can expose query/update/delete surfaces; exploitability depends on URI permissions and provider implementation.",
                         "MASVS-PLATFORM, MASVS-STORAGE",
                         "5.8",
@@ -212,7 +257,7 @@ class EvidenceFindingGenerator:
             value = self._value(item)
             host = value.get("host")
             scheme = value.get("scheme")
-            if host in {None, "", "*"} or scheme in {None, "", "*"} or "*" in str(host):
+            if value.get("scope") != "explicit_scheme_host" or host in {None, "", "*"} or scheme in {None, "", "*"} or "*" in str(host):
                 wildcard.append(item)
             else:
                 normal.append(item)
