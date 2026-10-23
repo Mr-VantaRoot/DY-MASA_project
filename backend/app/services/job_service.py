@@ -451,6 +451,7 @@ class JobRunner(_JobStorageHelpers):
         job.completed_at = datetime.utcnow()
         job.updated_at = datetime.utcnow()
         db.commit()
+        emit_job_event(job.id, "job_completed", "completed", job.current_step, None)
 
     @staticmethod
     def _cancel_job(db: Session, job_id: str) -> None:
@@ -482,6 +483,7 @@ class JobRunner(_JobStorageHelpers):
         job.current_step = current_step
         job.updated_at = datetime.utcnow()
         db.commit()
+        emit_job_event(job.id, "job_failed", "failed", current_step, error_message)
 
     @staticmethod
     def _mark(

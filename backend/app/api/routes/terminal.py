@@ -40,6 +40,12 @@ class LocalTerminal:
         "ollama", "top", "htop", "btop", "watch", "less", "more",
         "vim", "vi", "nano", "emacs", "ssh", "telnet", "screen", "tmux",
     }
+    BLOCKED_ESCAPE_COMMANDS = {
+        "bash", "sh", "dash", "zsh", "fish", "pwsh", "powershell", "cmd", "command", "env",
+        "sudo", "doas", "su", "mount", "umount", "chroot", "nsenter", "systemctl",
+        "service", "docker", "podman", "eval", "exec", "source",
+    }
+    INTERPRETER_CODE_FLAGS = {"-c", "--command", "-command", "-encodedcommand"}
     SAFE_SYSTEM_EXECUTABLES = {
         "ls", "pwd", "echo", "printf", "cat", "head", "tail", "grep", "rg",
         "find", "sort", "cut", "tr", "sed", "awk", "wc", "date", "file",
@@ -79,6 +85,7 @@ class LocalTerminal:
                     fallback_cwd=working_directory,
                     fallback_exit_code=completed.returncode,
                 )
+            self._validate_final_cwd(final_cwd)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="A local shell was not found on this machine.") from exc
         except subprocess.TimeoutExpired:
@@ -111,9 +118,7 @@ class LocalTerminal:
             if not expecting_command:
                 continue
             command_name = Path(token).name.lower()
-            if command_name == "env":
-                continue
-            if command_name in self.BLOCKED_INTERACTIVE_COMMANDS:
+            if command_name in self.BLOCKED_ESCAPE_COMMANDS or command_name in self.BLOCKED_INTERACTIVE_COMMANDS:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=(
@@ -121,10 +126,24 @@ class LocalTerminal:
                         "Run it in a separate system terminal instead."
                     ),
                 )
+            if command_name in {"python", "python3", "perl", "ruby", "node"} and (
+                index + 1 >= len(tokens) or tokens[index + 1] in operators or any(
+                    flag.lower() in self.INTERPRETER_CODE_FLAGS for flag in tokens[index + 1 :]
+                )
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Inline interpreter execution is disabled in the MASA terminal.",
+                )
             expecting_command = False
 
     def _validate_command_paths(self, command: str, working_directory: Path) -> None:
         """Reject explicit filesystem paths outside the MASA project root."""
+        if any(marker in command for marker in ("$(", "`", "<(", ">(")):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Shell command substitution and process substitution are blocked in the MASA terminal.",
+            )
         try:
             tokens = shlex.split(command, posix=True)
         except ValueError as exc:
@@ -153,6 +172,13 @@ class LocalTerminal:
             return True
         except ValueError:
             return False
+
+    def _validate_final_cwd(self, cwd: str) -> None:
+        if not self._is_allowed_path(Path(cwd).resolve()):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Terminal working directory escaped the MASA project root.",
+            )
 
     def _resolve_cwd(self, cwd: str | None) -> Path:
         if cwd:

@@ -77,6 +77,10 @@ class EmulatorManager:
             emulator_path=str(self.emulator_path),
         )
 
+    def ready_device(self) -> AdbDevice | None:
+        """Return the configured/safely selected ready device."""
+        return self._select_ready_device()
+
     def avd_exists(self, timeout: int = 20) -> bool:
         if not self.emulator_path.exists() or not self.avd_name:
             return False

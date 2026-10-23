@@ -5,7 +5,7 @@ import unittest
 
 from fastapi import HTTPException
 
-from app.api.routes.terminal import TerminalCommandRequest, run_terminal_command
+from app.api.routes.terminal import LocalTerminal, TerminalCommandRequest, run_terminal_command
 from app.core.config import Settings
 from dynamic.adb.client import AdbClient, AdbDevice, AdbResult
 from dynamic.emulator.manager import EmulatorManager
@@ -52,6 +52,13 @@ class Stage3SafetyTests(unittest.TestCase):
         with self.assertRaises(HTTPException) as error:
             run_terminal_command(TerminalCommandRequest(command="pwd"), terminal_token=None, settings=Settings(enable_terminal=True, terminal_token="secret"))
         self.assertIn(error.exception.status_code, {401, 403})
+
+    def test_terminal_blocks_shell_escape_and_host_paths(self) -> None:
+        terminal = LocalTerminal(Path.cwd())
+        for command in ("cat /etc/passwd", "bash -c 'cat /etc/passwd'", "python -c 'open(\"/etc/passwd\").read()'"):
+            with self.subTest(command=command), self.assertRaises(HTTPException) as error:
+                terminal.run(command)
+            self.assertIn(error.exception.status_code, {400, 403})
 
 
 if __name__ == "__main__":

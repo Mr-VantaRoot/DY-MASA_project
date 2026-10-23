@@ -1,4 +1,5 @@
 import json
+import asyncio
 from pathlib import Path
 from threading import Thread
 
@@ -7,11 +8,12 @@ from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
-from app.db.session import get_db
+from app.db.session import SessionLocal, get_db
 from app.db.base import (
     AnalysisArtifact,
     AnalysisEvidence,
     AnalysisFinding,
+    AnalysisJob,
     AnalysisJobStage,
     AnalysisJobStatus,
     AnalysisReasoning,
@@ -33,11 +35,23 @@ from app.schemas.jobs import (
     AnalysisReasoningListResponse,
     AnalysisReasoningResponse,
 )
-from app.services.job_events import as_event_payload, job_event_store
+from app.services.job_events import JobStageEvent, as_event_payload, job_event_store
 from app.services.job_service import JobRunner, JobService
 
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
+
+
+def _resolve_storage_file(path: Path, storage_root: Path, resource_name: str) -> Path:
+    """Resolve a stored file and reject traversal or symlink escapes."""
+    try:
+        resolved = path.resolve()
+        resolved.relative_to(storage_root.resolve())
+    except (OSError, ValueError):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"{resource_name} path is outside MASA storage.")
+    if not resolved.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"{resource_name} file not found.")
+    return resolved
 
 
 @router.post("", response_model=AnalysisJobResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -114,21 +128,53 @@ def list_job_timeline(
 
 
 @router.get("/{job_id}/events")
-def stream_job_events(job_id: str) -> StreamingResponse:
-    def event_stream() -> object:
+def stream_job_events(
+    job_id: str,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> StreamingResponse:
+    if JobService(db, settings).get_job(job_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis job not found.")
+
+    async def event_stream() -> object:
         last_event_id = 0
+        terminal_event_seen = False
         initial_events = job_event_store.snapshot(job_id)
         for event in initial_events:
             payload = json.dumps(as_event_payload(event))
             last_event_id = max(last_event_id, event.event_id)
+            terminal_event_seen = terminal_event_seen or event.stage.startswith("job_")
             yield f"data: {payload}\n\n"
 
         while True:
-            new_events = job_event_store.wait_for(job_id, after_event_id=last_event_id)
+            # Use a bounded sleep between snapshots so the ASGI event loop remains
+            # responsive without a tight/busy polling loop.
+            await asyncio.sleep(0.5)
+            new_events = job_event_store.snapshot(job_id, after_event_id=last_event_id)
             for event in new_events:
                 payload = json.dumps(as_event_payload(event))
                 last_event_id = max(last_event_id, event.event_id)
+                terminal_event_seen = terminal_event_seen or event.stage.startswith("job_")
                 yield f"data: {payload}\n\n"
+            with SessionLocal() as state_db:
+                job = state_db.get(AnalysisJob, job_id)
+            if job is None:
+                return
+            if job.status in {
+                AnalysisJobStatus.completed,
+                AnalysisJobStatus.failed,
+                AnalysisJobStatus.cancelled,
+            }:
+                if not terminal_event_seen:
+                    fallback = JobStageEvent(
+                        event_id=last_event_id + 1,
+                        stage=f"job_{job.status.value}",
+                        status=job.status.value,
+                        message=job.current_step,
+                        detail=job.error_message,
+                    )
+                    yield f"data: {json.dumps(as_event_payload(fallback))}\n\n"
+                return
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
@@ -173,15 +219,7 @@ def view_job_artifact(
     if artifact is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Artifact not found.")
 
-    artifact_path = Path(artifact.path)
-    storage_root = settings.storage_root.resolve()
-    try:
-        resolved_path = artifact_path.resolve()
-        resolved_path.relative_to(storage_root)
-    except (OSError, ValueError):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Artifact path is outside MASA storage.")
-    if not resolved_path.is_file():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Artifact file not found.")
+    resolved_path = _resolve_storage_file(Path(artifact.path), settings.storage_root, "Artifact")
 
     media_types = {".json": "application/json", ".txt": "text/plain", ".log": "text/plain", ".png": "image/png"}
     return FileResponse(resolved_path, media_type=media_types.get(resolved_path.suffix.lower(), "application/octet-stream"))
@@ -290,14 +328,12 @@ def download_job_report(
     if report is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found.")
 
-    report_path = Path(report.path)
-    if not report_path.exists():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report file not found.")
+    resolved_report_path = _resolve_storage_file(Path(report.path), settings.storage_root, "Report")
 
     media_type = "application/pdf" if report.report_type == "pdf" else "text/html"
     extension = "pdf" if report.report_type == "pdf" else "html"
     return FileResponse(
-        report_path,
+        resolved_report_path,
         media_type=media_type,
         filename=f"{Path(job.original_filename).stem}-pentest-report.{extension}",
     )

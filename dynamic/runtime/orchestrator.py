@@ -46,6 +46,8 @@ class DynamicRuntimeOrchestrator:
             avd_name=settings.avd_name,
             boot_timeout_seconds=settings.emulator_boot_timeout_seconds,
             avd_home=settings.android_avd_home,
+            device_serial=settings.dynamic_device_serial,
+            allow_physical_device=settings.dynamic_allow_physical_device,
         )
         self.adb = adb or AdbClient(settings.adb_path, settings.dynamic_timeout_seconds, self.command_log)
 
@@ -199,7 +201,7 @@ class DynamicRuntimeOrchestrator:
             device=device.serial,
             installed=True,
             launched=True,
-            logcat_path=str(logcat_path),
+            logcat_path=str(dynamic_dir / "logcat.txt"),
             screenshot_path=str(screenshot_path) if screenshot.ok else None,
         )
 

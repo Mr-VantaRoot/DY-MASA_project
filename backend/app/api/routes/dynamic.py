@@ -9,6 +9,7 @@ from app.core.config import Settings, get_settings
 from app.db.base import AnalysisEvidence, AnalysisJobStage, EvidenceCategory
 from app.db.session import get_db
 from app.schemas.jobs import AnalysisEvidenceListResponse, AnalysisEvidenceResponse, AnalysisJobStageListResponse, AnalysisJobStageResponse
+from app.services.job_events import emit_job_event
 from app.services.job_service import JobService
 from dynamic.emulator.manager import EmulatorManager, EmulatorStatus
 from dynamic.runtime.orchestrator import DynamicAnalysisError, DynamicRuntimeOrchestrator
@@ -39,7 +40,7 @@ def dynamic_status(settings: Settings = Depends(get_settings)) -> EmulatorStatus
 def dynamic_storage(settings: Settings = Depends(get_settings)) -> dict:
     """Return read-only storage totals and shared-media estimates for the ready device."""
     manager = _manager(settings)
-    device = manager.adb.first_ready_device()
+    device = manager.ready_device()
     if device is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="No ready Android device is connected.")
     report = manager.adb.storage_breakdown(device.serial, scan_personal=settings.dynamic_scan_personal_storage)
@@ -84,6 +85,7 @@ def _run_dynamic(job_id: str, run_stage_id: str, settings: Settings) -> None:
                 run_stage.message = "DY-MASA analysis completed"
                 run_stage.detail = "Runtime evidence and reports were refreshed"
             db.commit()
+            emit_job_event(job.id, "job_completed", "completed", "DY-MASA analysis completed", "Runtime evidence and reports were refreshed")
         except DynamicAnalysisError as exc:
             db.add(AnalysisJobStage(job_id=job.id, stage="dynamic_error", status="failed", message="DY-MASA analysis failed", detail=str(exc)))
             run_stage = db.get(AnalysisJobStage, run_stage_id)
@@ -94,6 +96,7 @@ def _run_dynamic(job_id: str, run_stage_id: str, settings: Settings) -> None:
             job.error_message = str(exc)
             job.current_step = "DY-MASA analysis failed"
             db.commit()
+            emit_job_event(job.id, "job_failed", "failed", "DY-MASA analysis failed", str(exc))
         except Exception as exc:
             db.add(AnalysisJobStage(job_id=job.id, stage="dynamic_error", status="failed", message="DY-MASA analysis failed", detail=str(exc)))
             run_stage = db.get(AnalysisJobStage, run_stage_id)
@@ -104,6 +107,7 @@ def _run_dynamic(job_id: str, run_stage_id: str, settings: Settings) -> None:
             job.error_message = str(exc)
             job.current_step = "DY-MASA analysis failed"
             db.commit()
+            emit_job_event(job.id, "job_failed", "failed", "DY-MASA analysis failed", str(exc))
 
 
 @router.post("/jobs/{job_id}/dynamic/start", status_code=status.HTTP_202_ACCEPTED)
