@@ -5,7 +5,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile, status
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
@@ -293,6 +293,13 @@ def view_job_artifact(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Artifact not found.")
 
     resolved_path = _resolve_storage_file(Path(artifact.path), settings.storage_root, "Artifact")
+
+    if artifact.tool_name == "adb-logcat-step" and resolved_path.stat().st_size == 0:
+        return PlainTextResponse(
+            "No target-matching logcat lines were captured for this validation step.\n"
+            "The step completed, but no Tier A or Tier B lines were emitted by the target application.\n"
+            "This is an empty filtered step log, not a missing artifact."
+        )
 
     media_types = {".json": "application/json", ".txt": "text/plain", ".log": "text/plain", ".png": "image/png"}
     return FileResponse(resolved_path, media_type=media_types.get(resolved_path.suffix.lower(), "application/octet-stream"))

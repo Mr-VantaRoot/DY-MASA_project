@@ -13,7 +13,7 @@ from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.api.routes.jobs import _events_after, _resolve_storage_file, stream_job_events
+from app.api.routes.jobs import _events_after, _resolve_storage_file, stream_job_events, view_job_artifact
 from app.api.routes.dynamic import _manager, start_dynamic_analysis
 from app.core.config import Settings
 from app.db.base import AnalysisArtifact, AnalysisEvidence, AnalysisFinding, AnalysisJob, AnalysisJobStage, AnalysisJobStatus, AnalysisReasoning, AnalysisReport, ArtifactType, Base, EvidenceCategory, FindingSeverity
@@ -28,6 +28,23 @@ from dynamic.runtime.orchestrator import DynamicAnalysisError, DynamicRuntimeOrc
 
 
 class ConfirmedBugTests(unittest.TestCase):
+    def test_empty_step_artifact_view_explains_filtered_log(self) -> None:
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            step = root / "workspace" / "dynamic" / "steps" / "01-check.txt"
+            step.parent.mkdir(parents=True)
+            step.write_text("", encoding="utf-8")
+            artifact_query = MagicMock()
+            artifact_query.filter.return_value.first.return_value = SimpleNamespace(
+                path=str(step), tool_name="adb-logcat-step"
+            )
+            db = MagicMock()
+            db.get.return_value = SimpleNamespace(id="job-1")
+            db.query.return_value = artifact_query
+            response = view_job_artifact("job-1", "artifact-1", db, SimpleNamespace(storage_root=root))
+        self.assertIn(b"No target-matching logcat lines", response.body)
+        self.assertIn(b"not a missing artifact", response.body)
+
     def test_live_cache_is_global_and_cache_only_ids_cannot_collide_with_database_ids(self) -> None:
         store = JobEventStore()
         store.MAX_CACHED_EVENTS = 2
