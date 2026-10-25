@@ -402,130 +402,90 @@ Use a Linux absolute path on Fedora.
 
 ### CLI edition
 
-The repository also includes a separate `dy-masa` launcher. It uses the same
-analysis engine, SQLAlchemy models, database, job queue, evidence, findings,
-reasoning, and reports as the web platform; it does not create a second CLI
-database or duplicate the analysis rules.
+DY-MASA includes a terminal interface that uses the same backend, database,
+analysis pipeline, job records, evidence, findings, reasoning, and reports as
+the web dashboard. It is not a separate scanner or separate database.
 
-The launcher resolves the repository root, works from another directory, and
-selects PostgreSQL or the canonical SQLite fallback before importing the
-application database engine:
+Run these commands from the repository root after installing backend
+dependencies and configuring `.env`:
 
 ```bash
-/path/to/MASA/work/dy-masa --help
-/path/to/MASA/work/dy-masa check
-/path/to/MASA/work/dy-masa history
-/path/to/MASA/work/dy-masa analyze "/path/to/authorized-app.apk"
-/path/to/MASA/work/dy-masa analyze --ghidra "/path/to/authorized-app.apk"
+./work/dy-masa --help
+./work/dy-masa check       # configuration and configured paths; no live checks
+./work/dy-masa health      # live database/tool checks
+./work/dy-masa analyze "/absolute/path/to/authorized-app.apk"
+./work/dy-masa history
+./work/dy-masa overview
 ```
 
-Ghidra is off by default for new scans. Use `--ghidra` or `--no-ghidra` to
-override it for one CLI scan. The interactive Scan APK action presents the
-same ON/OFF choice before creating the job. The web Scan page has the same
-per-scan toggle; its selection is stored with the job and is not only a UI
-preference. Enabling Ghidra can substantially increase CPU, RAM, disk, and
-scan time on an 8 GB machine.
+Use only APKs you own or are authorized to assess. The launcher shares the
+backend's configured database. The startup script for the web backend has a
+SQLite fallback when PostgreSQL is unavailable and no explicit database URL
+is configured; an explicit `MOBILE_PENTEST_DATABASE_URL` is preserved.
 
-Useful commands:
+#### Scan an APK
 
-```text
-dy-masa overview                         real job/result totals
-dy-masa history                          list persisted scan records
-dy-masa jobs                             list persisted jobs
-dy-masa job JOB_ID                       inspect stages and report files
-dy-masa findings [options]               list/filter findings
-dy-masa evidence [options]               list/filter evidence
-dy-masa reasoning [--job-id JOB_ID]      show deterministic summaries
-dy-masa reports [--job-id JOB_ID]        list reports and file presence
-dy-masa dynamic status                   inspect ADB/emulator status
-dy-masa dynamic start JOB_ID             queue a safe dynamic run
-dy-masa dynamic events JOB_ID            show runtime stages
-dy-masa dynamic evidence JOB_ID          show runtime evidence
-dy-masa dynamic artifacts JOB_ID         list runtime artifacts
-dy-masa health                           check database and tools
-dy-masa config                           show non-secret configuration
+```bash
+./work/dy-masa analyze "/absolute/path/to/authorized-app.apk"
+./work/dy-masa analyze --ghidra "/absolute/path/to/authorized-app.apk"
+./work/dy-masa analyze --no-ghidra "/absolute/path/to/authorized-app.apk"
 ```
 
-Global options are `--quiet` (suppress the interactive banner) and `--no-color`
-(disable terminal styling). The analysis command is:
+`analyze` submits the APK to the shared job pipeline, displays persisted
+stage/progress updates, and waits for completion. It returns a nonzero exit
+status when input validation, the job, required reports, or database access
+fails. Ghidra is optional; `--ghidra` and `--no-ghidra` override the configured
+setting for that scan, and are mutually exclusive. Ghidra can add substantial
+CPU, RAM, disk, and runtime cost, especially on an 8 GB machine.
 
-```text
-dy-masa analyze APK_PATH [--poll-interval SECONDS] [--ghidra | --no-ghidra]
+#### Command reference
+
+| Command | Purpose |
+| --- | --- |
+| `overview` | Show totals and recent jobs |
+| `history` | Browse persisted scans |
+| `jobs [options]` | List jobs; supports `--limit`, `--page`, `--page-size`, `--search`, `--status` |
+| `job JOB_ID` | Inspect one job, stages, and report paths |
+| `findings [options]` | List/filter findings; supports `--job-id`, `--severity`, `--search`, `--category`, `--page`, `--page-size`, `--detail FINDING_ID` |
+| `evidence [options]` | List/filter evidence; supports `--job-id`, `--search`, `--category`, `--page`, `--page-size`, `--detail EVIDENCE_ID` |
+| `reasoning [--job-id JOB_ID]` | Show deterministic summaries |
+| `reports [--job-id JOB_ID]` | List reports and check file presence |
+| `dynamic status` | Inspect ADB/device/emulator status |
+| `dynamic start JOB_ID` | Queue bounded runtime validation for a completed static scan |
+| `dynamic events JOB_ID` | Show runtime stage events |
+| `dynamic evidence JOB_ID` | Show stored runtime evidence |
+| `dynamic artifacts JOB_ID` | List runtime artifacts |
+| `check` | Show configuration and configured dependency paths without executing tools |
+| `health` | Check live database connectivity and analysis tools |
+| `config` | Show non-secret configuration |
+
+Global options: `--quiet` suppresses the interactive banner and `--no-color`
+disables terminal styling. The default polling interval for `analyze` is one
+second; change it with `--poll-interval SECONDS`.
+
+For large result sets, use the supported `--page` and `--page-size` options.
+Without paging or filters, list commands return all matching stored records.
+The CLI reads persisted data, so use the same database configuration as the
+web app to see the same jobs and results.
+
+#### Interactive mode
+
+Start the menu by running the launcher without a command:
+
+```bash
+./work/dy-masa
 ```
 
-`--ghidra` and `--no-ghidra` are mutually exclusive and override the configured
-per-scan default. `--poll-interval` controls status polling and defaults to one
-second. `analyze` validates the APK, reports persisted job stages while it runs,
-and returns nonzero for invalid input, failed or cancelled jobs, missing reports,
-or database failures. It uses the existing atomic worker claim and does not
-manually run individual analysis stages.
+Choose Overview, Scan APK, Findings, Evidence, Reasoning, Reports, Jobs,
+Dynamic, Health, Settings, or History. History lets you select a scan and open
+views scoped to that scan. Starting a scan or dynamic validation is an explicit
+action; navigating the menu does not itself trigger device operations.
+Use `h` for help and `q` or `0` to exit.
 
-The read commands support these actual options:
-
-- `jobs`: `--limit`, `--page`, `--page-size`, `--search`, and `--status`.
-- `findings`: `--job-id`, `--severity`, `--search`, `--category`, `--page`,
-  `--page-size`, and `--detail FINDING_ID`.
-- `evidence`: `--job-id`, `--search`, `--category`, `--page`, `--page-size`,
-  and `--detail EVIDENCE_ID`.
-- `reports` and `reasoning`: `--job-id`.
-
-Non-interactive list commands return every matching persisted record by default
-(`findings`, `evidence`, `reports`, `reasoning`, and `jobs` with no page/limit
-restriction). Use `--page` and `--page-size` on `findings`, `evidence`, or
-`jobs` when bounded output is preferred; those options use stable database
-ordering and display the total and current range. Interactive screens use the
-same database queries with paging to keep terminal memory and output bounded,
-while still allowing every record to be reached.
-
-The web collection endpoints also preserve their legacy full-list response when
-no pagination parameters are supplied. For large collections, pass `page`
-(starting at 1) and `page_size` (1–1000) to `/api/jobs`,
-`/api/jobs/{job_id}/timeline`, `/api/jobs/{job_id}/artifacts`,
-`/api/jobs/{job_id}/evidence`, `/api/jobs/{job_id}/findings`,
-`/api/jobs/{job_id}/reasoning`, `/api/jobs/{job_id}/reports`,
-`/api/jobs/{job_id}/dynamic/events`, or
-`/api/jobs/{job_id}/dynamic/evidence`. Paginated responses retain the existing
-list field and add `total`, `page`, and `page_size`; findings also accept
-optional `severity`, `category`, and `search` filters. Existing web consumers
-omit these parameters and therefore retain complete selected-job data.
-
-The interactive CLI is started with no command and includes the same read-only
-views. Choose **History** to select one persisted scan, then open only that
-scan's overview, findings, evidence, reasoning, reports, job details, or
-dynamic records. The submenu includes **New Scan** at the bottom. Scan and
-dynamic actions remain explicit so a user cannot accidentally launch a device
-operation while navigating the menu.
-
-Interactive navigation accepts the displayed numbers and shortcuts: `1`/`o`
-Overview, `2` New Scan, `3`/`f` Findings, `4`/`e` Evidence, `5` Reasoning,
-`6`/`r` Reports, `7`/`j` Jobs, `8` Dynamic, `9` Health, `10`/`s` Settings,
-`11`/`hst` History, `h`/`?` Help, and `q`/`0` Exit. Within a selected scan,
-`o`, `f`, `e`, `w`, `r`, `j`, and `d` open its scoped views; `n` starts a new
-scan and `x` goes back. Dynamic views use `s` Status, `e` Events, `v` Runtime
-Evidence, `a` Runtime Artifacts, `t` Start, and `x` Back. Invalid selections,
-empty states, Ctrl+C, and EOF return safely without deleting jobs.
-
-### CLI feature parity checklist
-
-| Web capability | CLI equivalent | Status |
-| --- | --- | --- |
-| Overview | `overview` | Implemented |
-| APK scan and progress | `analyze APK` | Implemented through shared job runner |
-| Findings and filters | `findings` | Implemented |
-| Evidence | `evidence` | Implemented |
-| Deterministic reasoning | `reasoning` | Implemented |
-| Reports | `reports`, `job JOB_ID` | Implemented with path/existence checks |
-| Jobs and stages | `jobs`, `job JOB_ID` | Implemented read-only |
-| Dynamic status/start/events/evidence | `dynamic ...` | Implemented through shared acceptance service |
-| Health | `health`, `check` | Implemented |
-| Terminal | Not duplicated | Not applicable; the CLI is already a local terminal process |
-
-The CLI refuses to delete active jobs and currently exposes no destructive job
-deletion command. Runtime device selection and ADB restrictions are inherited
-from the existing dynamic services; physical-device analysis remains an
-explicit configuration choice.
-
----
+Dynamic validation requires a ready authorized emulator or explicitly permitted
+device. It is bounded runtime observation, not a full dynamic penetration test
+and not proof that a finding is exploitable. The reasoning layer is deterministic
+Python and does not use an LLM to generate findings.
 
 ## 10. Using the platform
 
