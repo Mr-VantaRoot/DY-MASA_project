@@ -33,6 +33,15 @@ class Stage3SafetyTests(unittest.TestCase):
         blocked = EmulatorManager(Path("/sdk"), Path("/adb"), Path("/emulator"), "Dy-MASA")
         self.assertIsNone(blocked._select_ready_device([devices[0]]))
 
+    def test_allowed_physical_device_does_not_require_an_emulator(self) -> None:
+        manager = EmulatorManager(
+            Path("/sdk"), Path("/missing-adb"), Path("/missing-emulator"), None,
+            allow_physical_device=True,
+        )
+        selected = manager._select_ready_device([AdbDevice("phone-serial", "device")])
+        self.assertIsNotNone(selected)
+        self.assertEqual(selected.serial, "phone-serial")
+
     def test_personal_storage_scan_is_opt_in(self) -> None:
         adb = FakeStorageAdb()
         report = adb.storage_breakdown("device")
