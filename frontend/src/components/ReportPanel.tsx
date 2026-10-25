@@ -10,7 +10,7 @@ export function ReportPanel({ reasoning, reports, activeJob }: { reasoning: Reas
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wide mb-1">Deliverable</h2>
-          <h3 className="text-xl font-bold text-foreground">AI Reasoning & Export</h3>
+          <h3 className="text-xl font-bold text-foreground">Structured Reasoning & Export</h3>
         </div>
         <FileText className="text-muted-foreground" size={24} />
       </div>
@@ -20,7 +20,7 @@ export function ReportPanel({ reasoning, reports, activeJob }: { reasoning: Reas
           {!reasoning && activeJob?.status === "running" ? (
              <div className="absolute inset-0 shimmer opacity-50 rounded-lg"></div>
           ) : !reasoning ? (
-             <p className="text-muted-foreground italic text-sm">The structured AI reasoning summary will appear once evidence-backed findings are generated.</p>
+             <p className="text-muted-foreground italic text-sm">The structured reasoning summary will appear once evidence-backed findings are generated.</p>
           ) : (
             <blockquote className="border-l-4 border-accent pl-4">
               <strong className="text-xs uppercase text-muted-foreground tracking-wider mb-2 block">{reasoning.provider} Summary</strong>

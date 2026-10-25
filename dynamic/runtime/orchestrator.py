@@ -466,10 +466,18 @@ class DynamicRuntimeOrchestrator:
                 finding_links.setdefault(str(evidence_id), []).append(finding.id)
 
         validations: list[dict[str, object]] = []
+        runtime_step_count = 0
         steps_dir = dynamic_dir / "steps"
         steps_dir.mkdir(parents=True, exist_ok=True)
+        static_evidence.sort(
+            key=lambda item: (
+                0 if item.category == EvidenceCategory.component or item.evidence_type == "deep_link" else
+                1 if item.evidence_type == "application_flags" else
+                2 if item.category == EvidenceCategory.code_risk else 3
+            )
+        )
         for item in static_evidence:
-            if len(validations) >= 40:
+            if runtime_step_count >= 40:
                 break
             try:
                 value = json.loads(item.value_json)
@@ -508,13 +516,59 @@ class DynamicRuntimeOrchestrator:
             else:
                 continue
 
+            if item.evidence_type == "deep_link" and not action_kind:
+                record = {
+                    "static_evidence_id": item.id,
+                    "related_finding_ids": finding_links.get(item.id, []),
+                    "action": action,
+                    "result": "inconclusive",
+                    "detail": "No valid scheme/host combination could be generated from this intent filter; reachability was not inferred.",
+                    "command": [],
+                    "exit_code": None,
+                    "stdout": "",
+                    "stderr": "",
+                    "exploitability_claim": "none",
+                    "source": "DY-MASA safe runtime validation",
+                    "validation_skipped": True,
+                    "skip_reason": "intent-filter constraints were incomplete or unsupported",
+                    "step_log_path": None,
+                    "tier_a_line_count": 0,
+                    "crash_events": [],
+                    "permission_denial_or_security_exception_lines": [],
+                }
+                validations.append(record)
+                self._record_evidence(db, job, "dynamic_validation", f"Runtime validation: {action}", record)
+                continue
             if not action_kind:
                 continue
-            step_number = len(validations) + 1
+            if action_kind == "code_risk":
+                record = {
+                    "static_evidence_id": item.id,
+                    "related_finding_ids": finding_links.get(item.id, []),
+                    "action": action,
+                    "result": "potential",
+                    "detail": "not exercised at runtime; code-risk evidence is preserved without spending a device step on a no-op command.",
+                    "command": [],
+                    "exit_code": None,
+                    "stdout": "",
+                    "stderr": "",
+                    "exploitability_claim": "none",
+                    "source": "DY-MASA safe runtime validation",
+                    "validation_skipped": True,
+                    "skip_reason": "code-risk runtime execution is not a meaningful validation action",
+                    "step_log_path": None,
+                    "tier_a_line_count": 0,
+                    "crash_events": [],
+                    "permission_denial_or_security_exception_lines": [],
+                }
+                validations.append(record)
+                self._record_evidence(db, job, "dynamic_validation", f"Runtime validation: {action}", record)
+                continue
+            step_number = runtime_step_count + 1
             slug = re.sub(r"[^a-z0-9]+", "-", action.lower()).strip("-")[:70] or "validation"
             marker = f"DYMASA_STEP {step_number} {slug}"
-            self.adb.log_marker(device, marker)
             self.adb.clear_logcat(device)
+            self.adb.log_marker(device, marker)
             if action_kind == "activity":
                 result = self.adb.start_activity(component_name, device)
             elif action_kind == "service":
@@ -573,6 +627,7 @@ class DynamicRuntimeOrchestrator:
                 "permission_denial_or_security_exception_lines": permission_lines,
             }
             validations.append(record)
+            runtime_step_count += 1
             self._record_evidence(db, job, "dynamic_validation", f"Runtime validation: {action}", record)
 
         validation_path = dynamic_dir / "runtime-validations.json"
@@ -591,12 +646,25 @@ class DynamicRuntimeOrchestrator:
 
     @staticmethod
     def _runtime_uri(value: dict[str, object]) -> str | None:
-        scheme = str(value.get("scheme") or "masa").replace("*", "masa")
-        host = str(value.get("host") or "masa.test").replace("*", "masa.test")
-        path = str(value.get("path") or "/runtime-check")
-        if not path.startswith("/"):
-            path = "/" + path
-        return f"{scheme}://{host}{path}"
+        routes = value.get("routes")
+        candidates = routes if isinstance(routes, list) else [value]
+        for candidate in candidates:
+            if not isinstance(candidate, dict):
+                continue
+            scheme = str(candidate.get("scheme") or "")
+            host = str(candidate.get("host") or "")
+            if not scheme or not host or scheme == "*" or host == "*":
+                continue
+            if host.startswith("*."):
+                host = "runtime." + host[2:]
+            if "*" in host or "*" in scheme:
+                continue
+            path = str(candidate.get("path") or "/runtime-check")
+            path = path.replace(".*", "/runtime-check").replace("*", "runtime-check")
+            if not path.startswith("/"):
+                path = "/" + path
+            return f"{scheme}://{host}{path}"
+        return None
 
     @staticmethod
     def _filter_logcat(logcat: str, package_name: str) -> list[str]:

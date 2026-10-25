@@ -333,7 +333,7 @@ class HtmlReportGenerator:
     @staticmethod
     def _reasoning(reasoning: AnalysisReasoning | None) -> str:
         if reasoning is None:
-            return "<h2>AI-Assisted Reasoning</h2><p>No reasoning generated.</p>"
+            return "<h2>Structured Reasoning</h2><p>No reasoning generated.</p>"
         attack_paths = json.loads(reasoning.attack_paths_json)
         rendered_paths = []
         for path in attack_paths:

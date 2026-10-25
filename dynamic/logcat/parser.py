@@ -22,12 +22,6 @@ _TIMESTAMP = re.compile(
 _TIME_STYLE = re.compile(
     r"^(?P<level>[VDIWEFS])/(?P<tag>.*?)\(\s*(?P<pid>\d+)\s*\):\s?(?P<message>.*)$"
 )
-_THREAD_STYLE_WITH_UID = re.compile(
-    r"^(?P<pid>\d+)\s+(?P<tid>\d+)\s+(?P<uid>\S+)\s+(?P<level>[VDIWEFS])\s+(?P<tag>[^:]+):\s?(?P<message>.*)$"
-)
-_THREAD_STYLE = re.compile(
-    r"^(?P<pid>\d+)\s+(?P<tid>\d+)\s+(?P<level>[VDIWEFS])\s+(?P<tag>[^:]+):\s?(?P<message>.*)$"
-)
 
 
 def parse_uid(value: str | None) -> int | None:
@@ -61,17 +55,26 @@ def parse_line(raw: str) -> ParsedLine:
             message=match.group("message"),
         )
 
-    match = _THREAD_STYLE_WITH_UID.match(body)
-    if not match:
-        match = _THREAD_STYLE.match(body)
-    if match:
-        return ParsedLine(
-            raw=raw,
-            timestamp=timestamp,
-            pid=int(match.group("pid")),
-            uid=parse_uid(match.groupdict().get("uid")),
-            level=match.group("level"),
-            tag=match.group("tag"),
-            message=match.group("message"),
-        )
+    prefix, separator, message = body.partition(":")
+    fields = prefix.split()
+    if separator and len(fields) >= 3 and fields[0].isdigit() and fields[1].isdigit():
+        pid, _tid = int(fields[0]), int(fields[1])
+        remaining = fields[2:]
+        level_index = next((index for index, field in enumerate(remaining) if field in "VDIWEFS"), None)
+        if level_index is not None:
+            level = remaining[level_index]
+            before_level = remaining[:level_index]
+            after_level = remaining[level_index + 1:]
+            uid_token = next((field for field in before_level if parse_uid(field) is not None), None)
+            if uid_token is None and after_level and parse_uid(after_level[0]) is not None and len(after_level) > 1:
+                uid_token = after_level.pop(0)
+            return ParsedLine(
+                raw=raw,
+                timestamp=timestamp,
+                pid=pid,
+                uid=parse_uid(uid_token),
+                level=level,
+                tag=" ".join(after_level) or None,
+                message=message.lstrip(),
+            )
     return ParsedLine(raw=raw, timestamp=timestamp, message=body)

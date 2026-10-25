@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 import asyncio
 import unittest
+import json
 from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import HTTPException
@@ -301,6 +302,47 @@ class ConfirmedBugTests(unittest.TestCase):
             self.assertEqual(summary.logcat_path, str(root / "workspace" / "dynamic" / "logcat.txt"))
             self.assertEqual(summary.device, "configured-phone")
             self.assertTrue(adb.launch_package.called)
+
+    def test_runtime_step_clears_logcat_before_writing_marker(self) -> None:
+        with TemporaryDirectory() as temp:
+            orchestrator, adb = self._fake_runtime(Path(temp), AdbResult(["adb", "start"], 0, "Status: ok\n", ""))
+            adb.start_activity.return_value = AdbResult(["adb", "start"], 0, "Status: ok\n", "")
+            item = SimpleNamespace(
+                id="component-1",
+                category=EvidenceCategory.component,
+                evidence_type="activity",
+                label=".MainActivity",
+                value_json=json.dumps({"name": ".MainActivity", "component_type": "activity", "exported_effective": True}),
+            )
+            db = MagicMock()
+            db.scalars.side_effect = [SimpleNamespace(all=lambda: [item]), SimpleNamespace(all=lambda: [])]
+            capture = {"tier_a": [], "tier_b": [], "tier_c": [], "pids": [], "uids": [], "crashes": [], "lines": []}
+            with patch.object(orchestrator, "_package_pids", return_value=[]), \
+                patch.object(orchestrator, "_save_logcat_capture", return_value=capture), \
+                patch.object(orchestrator, "_record_artifact"), patch.object(orchestrator, "_write_lines"), \
+                patch.object(orchestrator, "_record_evidence"), patch("dynamic.runtime.orchestrator.time.sleep"):
+                orchestrator._validate_static_attack_surface(db, SimpleNamespace(id="job"), "device", "example.app", Path(temp))
+            names = [call[0] for call in adb.method_calls]
+            self.assertLess(names.index("clear_logcat"), names.index("log_marker"))
+            self.assertLess(names.index("log_marker"), names.index("start_activity"))
+            self.assertLess(names.index("start_activity"), names.index("dump_logcat"))
+
+    def test_code_risk_validation_does_not_execute_true(self) -> None:
+        with TemporaryDirectory() as temp:
+            orchestrator, adb = self._fake_runtime(Path(temp), AdbResult(["adb"], 0, "", ""))
+            item = SimpleNamespace(
+                id="risk-1",
+                category=EvidenceCategory.code_risk,
+                evidence_type="cleartext_http_endpoint",
+                label="HTTP endpoint",
+                value_json=json.dumps({"description": "risk"}),
+            )
+            db = MagicMock()
+            db.scalars.side_effect = [SimpleNamespace(all=lambda: [item]), SimpleNamespace(all=lambda: [])]
+            with patch.object(orchestrator, "_record_evidence") as record:
+                orchestrator._validate_static_attack_surface(db, SimpleNamespace(id="job"), "device", "example.app", Path(temp))
+            self.assertFalse(any(call[0] == "shell" for call in adb.method_calls))
+            self.assertTrue(record.called)
 
     def test_failed_launch_stops_dynamic_run_without_report_refresh(self) -> None:
         with TemporaryDirectory() as temp:

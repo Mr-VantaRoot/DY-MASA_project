@@ -19,7 +19,7 @@ export function ReasoningPage() {
 
   return (
     <AppShell
-      title="AI Reasoning"
+      title="Structured Reasoning"
       subtitle={jobState.activeJob ? `Structured risk summary for ${jobState.activeJob.original_filename}` : "No active job"}
     >
       <div className="bg-card border border-border rounded-xl p-6">

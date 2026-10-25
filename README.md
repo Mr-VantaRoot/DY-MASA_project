@@ -39,3 +39,7 @@ adb devices
 ```
 
 Detailed operating instructions are in [RUNBOOK.md](RUNBOOK.md). Presentation positioning and limitations are in [TECHNICAL_PRESENTATION_BRIEF.md](TECHNICAL_PRESENTATION_BRIEF.md).
+
+## Terminal boundary
+
+The optional terminal is a trusted local-shell convenience for an authorized operator on the machine hosting the backend. It is disabled by default and requires a private token when enabled. Its path and command checks reduce accidental misuse but do not create a secure sandbox for arbitrary shell execution. Use an isolated VM or container with a separate user and filesystem if untrusted users or commands must be supported.

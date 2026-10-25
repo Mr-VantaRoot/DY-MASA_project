@@ -27,6 +27,14 @@ class Stage1LogcatTests(unittest.TestCase):
         self.assertEqual(parsed.uid, 10825)
         self.assertEqual(parsed.tag, "Tag 7")
 
+    def test_sanitized_year_uid_fixture_supports_uid_field_variants(self) -> None:
+        fixture = Path(__file__).parent / "fixtures" / "logcat-threadtime-uid-year.txt"
+        lines = fixture.read_text(encoding="utf-8").splitlines()
+        first = parse_line(lines[0])
+        second = parse_line(lines[1])
+        self.assertEqual((first.pid, first.uid, first.tag), (31093, 10825, "ActivityManager"))
+        self.assertEqual((second.pid, second.uid, second.tag), (31093, 10825, "MainActivity 7"))
+
     def test_pid_restart_and_reuse_windows(self) -> None:
         lines = [
             line(31093, "ActivityManager", f"Start proc 31093:{PACKAGE}/u0a825 for activity"),

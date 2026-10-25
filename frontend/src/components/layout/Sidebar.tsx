@@ -20,7 +20,7 @@ const NAV_ITEMS = [
   { path: "/scan", label: "Scan", icon: UploadCloud },
   { path: "/findings", label: "Findings", icon: ShieldAlert },
   { path: "/evidence", label: "Evidence", icon: Database },
-  { path: "/reasoning", label: "AI Reasoning", icon: BrainCircuit },
+  { path: "/reasoning", label: "Structured Reasoning", icon: BrainCircuit },
   { path: "/dynamic", label: "DY-MASA", icon: Radar },
   { path: "/reports", label: "Reports", icon: FileText },
   { path: "/jobs", label: "Job History", icon: History },

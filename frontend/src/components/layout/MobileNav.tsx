@@ -7,7 +7,7 @@ const NAV_ITEMS = [
   { path: "/scan", label: "Scan" },
   { path: "/findings", label: "Findings" },
   { path: "/evidence", label: "Evidence" },
-  { path: "/reasoning", label: "AI Reasoning" },
+  { path: "/reasoning", label: "Structured Reasoning" },
   { path: "/dynamic", label: "DY-MASA" },
   { path: "/reports", label: "Reports" },
   { path: "/jobs", label: "Job History" },
