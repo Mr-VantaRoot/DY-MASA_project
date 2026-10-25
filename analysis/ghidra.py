@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import json
+import hashlib
 import os
 import signal
 import subprocess
@@ -57,13 +58,15 @@ class GhidraAnalyzer:
         if not self._settings.ghidra_enabled:
             detail = "Ghidra analysis is disabled by configuration."
             self._write_log(log_path, detail)
-            return NativeAnalysisResult("ghidra", "skipped", output_path, log_path, None, native_libraries, detail)
+            results = tuple(self._library_result(library, "skipped", "Ghidra analysis is disabled by configuration.") for library in native_libraries)
+            return NativeAnalysisResult("ghidra", "skipped", output_path, log_path, None, native_libraries, detail, results)
 
         headless = self._settings.ghidra_headless_path
         if headless is None or not headless.exists():
             detail = "Ghidra headless executable is not configured or was not found. Native libraries were retained for manual analysis."
             self._write_log(log_path, detail)
-            return NativeAnalysisResult("ghidra", "skipped", output_path, log_path, None, native_libraries, detail)
+            results = tuple(self._library_result(library, "skipped", detail) for library in native_libraries)
+            return NativeAnalysisResult("ghidra", "skipped", output_path, log_path, None, native_libraries, detail, results)
 
         project_path = output_path / "project"
         project_path.mkdir(parents=True, exist_ok=True)
@@ -80,6 +83,7 @@ class GhidraAnalyzer:
                 "library": library.name,
                 "path": str(library),
                 "size_bytes": size_bytes,
+                "sha256": self._sha256(library),
                 "index": index,
                 "total": len(native_libraries),
             }
@@ -90,8 +94,7 @@ class GhidraAnalyzer:
             self._notify(progress_callback, {**event_base, "status": "running", "elapsed_seconds": 0.0})
             remaining = int(deadline - time.monotonic())
             if remaining <= 0:
-                failed = True
-                result = {**event_base, "status": "timed_out", "exit_code": -1, "elapsed_seconds": round(time.monotonic() - started, 3), "detail": "Overall Ghidra timeout was exhausted before this library started."}
+                result = {**event_base, "status": "skipped", "exit_code": None, "elapsed_seconds": 0.0, "detail": "Overall Ghidra timeout was exhausted before this library started."}
                 library_results.append(result)
                 self._notify(progress_callback, result)
                 continue
@@ -122,11 +125,46 @@ class GhidraAnalyzer:
                 detail = "Ghidra analysis was cancelled; active process was terminated safely."
                 return NativeAnalysisResult("ghidra", "cancelled", output_path, log_path, -2, native_libraries, detail, tuple(library_results))
 
-        status = "failed" if failed else "completed"
-        detail = f"Ghidra analyzed {len(native_libraries)} native library file(s) with {sum(item['status'] == 'completed' for item in library_results)} completed and {sum(item['status'] != 'completed' for item in library_results)} not completed. Results are static analysis evidence, not proof of exploitability."
+        completed_count = sum(item["status"] == "completed" for item in library_results)
+        timed_out_count = sum(item["status"] == "timed_out" for item in library_results)
+        failed_count = sum(item["status"] == "failed" for item in library_results)
+        skipped_count = sum(item["status"] == "skipped" for item in library_results)
+        if completed_count == len(native_libraries):
+            status = "completed"
+        elif completed_count == 0 and skipped_count == len(native_libraries):
+            status = "skipped"
+        elif completed_count:
+            status = "partial"
+        else:
+            status = "failed"
+        detail = (
+            f"Ghidra discovered {len(native_libraries)} native library file(s): "
+            f"{completed_count} completed, {timed_out_count} timed out, {failed_count} failed, "
+            f"{skipped_count} skipped. Results are static analysis evidence, not proof of exploitability."
+        )
         log_parts.append(detail)
         self._write_log(log_path, "\n".join(log_parts))
         return NativeAnalysisResult("ghidra", status, output_path, log_path, 0 if not failed else last_exit_code, native_libraries, detail, tuple(library_results))
+
+    @staticmethod
+    def _sha256(path: Path) -> str:
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    def _library_result(self, library: Path, status: str, detail: str) -> dict[str, object]:
+        return {
+            "library": library.name,
+            "path": str(library),
+            "sha256": self._sha256(library) if library.exists() else None,
+            "size_bytes": library.stat().st_size if library.exists() else None,
+            "status": status,
+            "exit_code": None,
+            "elapsed_seconds": 0.0,
+            "detail": detail,
+        }
 
     @staticmethod
     def _notify(callback: LibraryEvent | None, event: dict[str, object]) -> None:
@@ -218,6 +256,14 @@ class GhidraAnalyzer:
 
 
 def evidence_for_native_analysis(result: NativeAnalysisResult) -> list[EvidenceItem]:
+    coverage = {
+        "discovered": len(result.native_libraries),
+        "completed": sum(item.get("status") == "completed" for item in result.library_results),
+        "timed_out": sum(item.get("status") == "timed_out" for item in result.library_results),
+        "failed": sum(item.get("status") == "failed" for item in result.library_results),
+        "skipped": sum(item.get("status") == "skipped" for item in result.library_results),
+        "partial": sum(item.get("status") == "partial" for item in result.library_results),
+    }
     evidence = [
         EvidenceItem(
             category=EvidenceCategory.code_risk,
@@ -228,6 +274,8 @@ def evidence_for_native_analysis(result: NativeAnalysisResult) -> list[EvidenceI
                 "status": result.status,
                 "exit_code": result.exit_code,
                 "library_count": len(result.native_libraries),
+                "coverage": coverage,
+                "library_results": list(result.library_results),
                 "detail": result.detail,
             },
             source_path=result.log_path,
@@ -235,17 +283,19 @@ def evidence_for_native_analysis(result: NativeAnalysisResult) -> list[EvidenceI
         )
     ]
     for library in result.native_libraries:
+        identity = next((item for item in result.library_results if item.get("path") == str(library)), None)
         evidence.append(
             EvidenceItem(
                 category=EvidenceCategory.code_risk,
                 evidence_type="native_library",
-                label=f"Native library: {library.name}",
+                label=f"Native library: {library.name} ({identity.get('status') if identity else result.status})",
                 value={
                     "file": str(library),
                     "architecture": library.parent.name,
                     "size_bytes": library.stat().st_size if library.exists() else None,
-                    "analysis_status": result.status,
-                    "library_results": list(result.library_results),
+                    "sha256": identity.get("sha256") if identity else None,
+                    "analysis_status": identity.get("status") if identity else result.status,
+                    "analysis_detail": identity.get("detail") if identity else result.detail,
                 },
                 source_path=library,
                 source_node="native-library",

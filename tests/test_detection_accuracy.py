@@ -50,6 +50,24 @@ class DetectionAccuracyTests(unittest.TestCase):
             permissive_hostname = CodeRiskEvidenceExtractor().extract(root)
             self.assertEqual(sum(item.evidence_type == "trust_all_ssl" for item in permissive_hostname), 2)
 
+    def test_localhost_is_a_low_confidence_development_candidate(self) -> None:
+        with TemporaryDirectory() as temp:
+            root = Path(temp) / "b3nac" / "injuredandroid"
+            root.mkdir(parents=True)
+            (root / "Network.java").write_text('String endpoint = "http://localhost:8080/api";\n', encoding="utf-8")
+            evidence = CodeRiskEvidenceExtractor().extract(root)
+        self.assertEqual(len(evidence), 1)
+        self.assertEqual(evidence[0].value["confidence"], "low")
+        self.assertEqual(evidence[0].value["ownership"], "first_party_application")
+        finding = EvidenceFindingGenerator().generate([
+            SimpleNamespace(
+                id="e1", label=evidence[0].label, evidence_type=evidence[0].evidence_type,
+                category=SimpleNamespace(value=evidence[0].category.value), value_json=evidence[0].value_json,
+            )
+        ])[0]
+        self.assertEqual(finding.severity.value, "info")
+        self.assertIn("development", finding.description.lower())
+
     def test_permission_variants_defaults_and_complete_deep_link_filter(self) -> None:
         manifest = '''<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="x">
           <uses-sdk android:targetSdkVersion="27" />
@@ -181,6 +199,19 @@ class DetectionAccuracyTests(unittest.TestCase):
             self.assertTrue(output.exists())
             self.assertGreater(output.stat().st_size, 0)
 
+    def test_reports_survive_malformed_persisted_json(self) -> None:
+        finding = SimpleNamespace(
+            id="bad-json-finding", title="Finding", severity=SimpleNamespace(value="info"),
+            category="Review", description="Description", remediation="Review.", evidence_ids_json="{bad json",
+        )
+        job = SimpleNamespace(id="bad-json", original_filename="sample.apk", sha256=None, file_size_bytes=1)
+        reasoning = [SimpleNamespace(provider="deterministic", summary="Summary", limitations="Limits", attack_paths_json="not-json")]
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            html = HtmlReportGenerator().generate(job, [], [finding], reasoning, root / "html")
+            pdf = PdfReportGenerator().generate(job, [], [finding], reasoning, root / "pdf")
+            self.assertTrue(html.exists() and pdf.exists())
+
     def test_pdf_table_keeps_plain_text_entities_readable(self) -> None:
         table = PdfReportGenerator()._table([["Header"], ["A & B < C > D"]])
         self.assertEqual(table._cellvalues[1][0], "A & B < C > D")
@@ -247,6 +278,20 @@ class DetectionAccuracyTests(unittest.TestCase):
         self.assertIn("workspaces/job/apktool/AndroidManifest.xml", source_cell)
         self.assertNotIn("/home/mrvantaroot", source_cell)
         self.assertNotIn("Evidence examples", html)
+
+    def test_evidence_register_keeps_all_records_available(self) -> None:
+        items = [
+            SimpleNamespace(
+                id=f"e{index}", category=SimpleNamespace(value="manifest"), evidence_type="record",
+                label=f"record-{index}", source_path=f"/tmp/storage/workspaces/job/{index}.xml", value_json="{}",
+            )
+            for index in range(81)
+        ]
+        html = HtmlReportGenerator()._evidence(items, Path("/tmp/storage/reports"))
+        table = PdfReportGenerator()._evidence_table(items, Path("/tmp/storage/reports"))
+        self.assertIn("Showing all 81 normalized persisted evidence records", html)
+        self.assertIn("record-80", html)
+        self.assertEqual(len(table._cellvalues), 82)
 
     def test_cross_tool_secret_duplicates_merge_and_keep_source_references(self) -> None:
         with TemporaryDirectory() as temp:

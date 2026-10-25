@@ -17,7 +17,17 @@ from reportlab.platypus import (
 )
 
 
+def _json_list(value: object) -> list[object]:
+    try:
+        parsed = json.loads(value) if isinstance(value, str) else value
+    except (TypeError, json.JSONDecodeError):
+        return []
+    return parsed if isinstance(parsed, list) else []
+
+
 def _display_path(value: object, storage_root: Path | None = None) -> str:
+    if value is None or not str(value).strip():
+        return "not recorded"
     path = Path(str(value))
     if storage_root is not None:
         try:
@@ -48,6 +58,17 @@ def _display_evidence_sources(item: AnalysisEvidence, storage_root: Path | None 
         if displayed:
             return "; ".join(displayed)
     return _display_path(item.source_path, storage_root)
+
+
+def _display_evidence_label(item: AnalysisEvidence) -> str:
+    try:
+        payload = json.loads(item.value_json)
+    except (TypeError, json.JSONDecodeError):
+        payload = {}
+    ownership = payload.get("ownership")
+    if ownership in {"first_party_application", "third_party_library", "unknown"}:
+        return f"{item.label} [{ownership.replace('_', ' ')}]"
+    return item.label
 
 
 class HtmlReportGenerator:
@@ -127,16 +148,42 @@ class HtmlReportGenerator:
             if runtime_count
             else "<li>No DY-MASA runtime run was included when this report was generated.</li>"
         )
+        native_note = ""
+        native_items = [item for item in evidence if item.evidence_type == "ghidra_analysis"]
+        if native_items:
+            try:
+                native = json.loads(native_items[0].value_json)
+            except json.JSONDecodeError:
+                native = {}
+            coverage = native.get("coverage") or {}
+            if not coverage:
+                library_items = [item for item in evidence if item.evidence_type == "native_library"]
+                coverage = {
+                    "discovered": len(library_items),
+                    "status_unavailable": True,
+                }
+            if coverage.get("status_unavailable"):
+                native_note = f"<li>Native analysis discovered {escape(str(coverage.get('discovered', 0)))} libraries, but per-library outcomes were not recorded in this historical evidence; coverage is incomplete and not a clean assessment.</li>"
+            else:
+                native_note = (
+                    f"<li>Native analysis coverage: {escape(str(coverage.get('completed', 0)))} completed, "
+                    f"{escape(str(coverage.get('timed_out', 0)))} timed out, "
+                    f"{escape(str(coverage.get('failed', 0)))} failed, "
+                    f"{escape(str(coverage.get('skipped', 0)))} skipped out of "
+                    f"{escape(str(coverage.get('discovered', native.get('library_count', 0))))} discovered; "
+                    "incomplete coverage is not a clean assessment.</li>"
+                )
         return """
 <h2>Scope and Limitations</h2>
 <p>This report is an automated Android security assessment. It is designed to support mobile pentesting, not replace manual validation.</p>
 <ul>
   %s
+  %s
   <li>Manifest findings indicate exposed attack surface, not confirmed exploitability.</li>
   <li>Code/string findings are triage candidates and require manual validation.</li>
   <li>Severity values are evidence-based estimates and should be adjusted after manual review.</li>
 </ul>
-""" % runtime_note
+""" % (runtime_note, native_note)
 
     @staticmethod
     def _runtime_limitations(evidence: list[AnalysisEvidence]) -> str:
@@ -229,7 +276,7 @@ class HtmlReportGenerator:
             return "<h2>Technical Findings</h2><p>No evidence-backed findings were generated.</p>"
         rendered = ["<h2>Technical Findings</h2>"]
         for finding in findings:
-            evidence_ids = [str(item) for item in json.loads(finding.evidence_ids_json)]
+            evidence_ids = [str(item) for item in _json_list(finding.evidence_ids_json)]
             rendered.append(
                 f"""
 <section class="finding">
@@ -252,7 +299,7 @@ class HtmlReportGenerator:
         items = []
         for evidence_id in evidence_ids:
             evidence = evidence_by_id.get(evidence_id)
-            label = evidence.label if evidence else evidence_id
+            label = _display_evidence_label(evidence) if evidence else evidence_id
             if evidence is None:
                 items.append(f"<li><code>{escape(evidence_id)}</code> - {escape(label)}</li>")
                 continue
@@ -301,17 +348,13 @@ class HtmlReportGenerator:
     @staticmethod
     def _evidence(evidence: list[AnalysisEvidence], report_dir: Path) -> str:
         rows = []
-        for item in evidence[:80]:
+        for item in evidence:
             rows.append(
                 f"<tr><td>{escape(item.category.value)}</td><td>{escape(item.evidence_type)}</td>"
-                f"<td>{escape(item.label)}</td><td><code>{escape(_display_evidence_sources(item, report_dir.parent))}</code></td></tr>"
+                f"<td>{escape(_display_evidence_label(item))}</td><td><code>{escape(_display_evidence_sources(item, report_dir.parent))}</code></td></tr>"
             )
         body = "\n".join(rows) or '<tr><td colspan="4">No evidence extracted.</td></tr>'
-        truncated = (
-            f'<p class="meta">Showing first 80 of {len(evidence)} normalized persisted evidence records.</p>'
-            if len(evidence) > 80
-            else ""
-        )
+        truncated = f'<p class="meta">Showing all {len(evidence)} normalized persisted evidence records.</p>'
         return f"""
 <h2>Evidence Register</h2>
 {truncated}
@@ -379,7 +422,7 @@ class HtmlReportGenerator:
             return ""
         items = []
         for finding in findings[:8]:
-            cited = [evidence_by_id[evidence_id].label for evidence_id in json.loads(finding.evidence_ids_json) if evidence_id in evidence_by_id]
+            cited = [evidence_by_id[str(evidence_id)].label for evidence_id in _json_list(finding.evidence_ids_json) if str(evidence_id) in evidence_by_id]
             if finding.category == "Exported Components":
                 action = "Open the decompiled component and verify intent input validation, authorization, and sensitive data handling."
             elif finding.category == "Deep Links":
@@ -397,9 +440,11 @@ class HtmlReportGenerator:
     def _reasoning(reasoning: AnalysisReasoning | None) -> str:
         if reasoning is None:
             return "<h2>Structured Reasoning</h2><p>No reasoning generated.</p>"
-        attack_paths = json.loads(reasoning.attack_paths_json)
+        attack_paths = _json_list(reasoning.attack_paths_json)
         rendered_paths = []
         for path in attack_paths:
+            if not isinstance(path, dict):
+                continue
             steps = "".join(f"<li>{escape(str(step))}</li>" for step in path.get("steps", []))
             rendered_paths.append(f"<h3>{escape(str(path.get('title', 'Attack path')))}</h3><ol>{steps}</ol>")
         return f"""
@@ -487,6 +532,7 @@ class PdfReportGenerator:
                 ),
                 body,
             ),
+            *self._native_coverage_story(evidence, heading, body),
             Spacer(1, 0.2 * inch),
             Paragraph("Runtime Test Boundaries", heading),
             *self._runtime_limitations_story(evidence, body),
@@ -513,7 +559,7 @@ class PdfReportGenerator:
                 Paragraph("Evidence Register", heading),
                 Paragraph(
                     self._safe_text(
-                        f"Showing first {min(80, len(evidence))} of {len(evidence)} normalized persisted evidence records."
+                        f"Showing all {len(evidence)} normalized persisted evidence records."
                     ),
                     body,
                 ),
@@ -529,6 +575,34 @@ class PdfReportGenerator:
         )
         story.extend(self._reasoning_story(latest_reasoning, body))
         return story
+
+    @staticmethod
+    def _native_coverage_story(evidence: list[AnalysisEvidence], heading: ParagraphStyle, body: ParagraphStyle) -> list[object]:
+        items = [item for item in evidence if item.evidence_type == "ghidra_analysis"]
+        if not items:
+            return []
+        try:
+            payload = json.loads(items[0].value_json)
+        except json.JSONDecodeError:
+            payload = {}
+        coverage = payload.get("coverage") or {}
+        if not coverage:
+            library_items = [item for item in evidence if item.evidence_type == "native_library"]
+            coverage = {
+                "discovered": len(library_items),
+                "status_unavailable": True,
+            }
+        if coverage.get("status_unavailable"):
+            text = f"Native analysis discovered {coverage.get('discovered', 0)} libraries, but per-library outcomes were not recorded in this historical evidence. Incomplete native coverage is not a clean assessment."
+        else:
+            text = (
+                "Native analysis coverage: "
+                f"{coverage.get('completed', 0)} completed, {coverage.get('timed_out', 0)} timed out, "
+                f"{coverage.get('failed', 0)} failed, {coverage.get('skipped', 0)} skipped of "
+                f"{coverage.get('discovered', payload.get('library_count', 0))} discovered. "
+                "Incomplete native coverage is not a clean assessment."
+            )
+        return [Paragraph("Native Analysis Coverage", heading), Paragraph(PdfReportGenerator._safe_text(text), body)]
 
     @staticmethod
     def _executive_summary_text(findings: list[AnalysisFinding], reasoning: AnalysisReasoning | None) -> str:
@@ -555,7 +629,7 @@ class PdfReportGenerator:
             return [Paragraph("No validation actions were generated.", body)]
         actions = []
         for finding in findings[:8]:
-            cited = [evidence_by_id[evidence_id].label for evidence_id in json.loads(finding.evidence_ids_json) if evidence_id in evidence_by_id]
+            cited = [evidence_by_id[str(evidence_id)].label for evidence_id in _json_list(finding.evidence_ids_json) if str(evidence_id) in evidence_by_id]
             if finding.category == "Exported Components":
                 action = "Review decompiled component input handling, authorization, and sensitive data access."
             elif finding.category == "Deep Links":
@@ -577,11 +651,11 @@ class PdfReportGenerator:
         code: ParagraphStyle,
         report_dir: Path,
     ) -> list[object]:
-        evidence_ids = [str(item) for item in json.loads(finding.evidence_ids_json)]
+        evidence_ids = [str(item) for item in _json_list(finding.evidence_ids_json)]
         evidence_lines = []
         for evidence_id in evidence_ids:
             evidence = evidence_by_id.get(evidence_id)
-            label = evidence.label if evidence else evidence_id
+            label = _display_evidence_label(evidence) if evidence else evidence_id
             if evidence is None:
                 evidence_lines.append(f"{evidence_id} - {label}")
                 continue
@@ -635,7 +709,9 @@ class PdfReportGenerator:
             Paragraph(PdfReportGenerator._safe_text(f"Provider: {reasoning.provider}"), body),
             Paragraph(PdfReportGenerator._safe_text(reasoning.limitations), body),
         ]
-        for attack_path in json.loads(reasoning.attack_paths_json):
+        for attack_path in _json_list(reasoning.attack_paths_json):
+            if not isinstance(attack_path, dict):
+                continue
             steps = " ".join(str(step) for step in attack_path.get("steps", []))
             story.append(Paragraph(PdfReportGenerator._safe_text(f"{attack_path.get('title', 'Attack path')}: {steps}"), body))
         return story
@@ -737,8 +813,8 @@ class PdfReportGenerator:
     def _evidence_table(self, evidence: list[AnalysisEvidence], report_dir: Path) -> Table:
         rows = [["Category", "Type", "Label", "Source"]]
         rows.extend(
-            [item.category.value, item.evidence_type, item.label, _display_evidence_sources(item, report_dir.parent)]
-            for item in evidence[:80]
+            [item.category.value, item.evidence_type, _display_evidence_label(item), _display_evidence_sources(item, report_dir.parent)]
+            for item in evidence
         )
         if len(rows) == 1:
             rows.append(["-", "-", "No evidence extracted", "-"])

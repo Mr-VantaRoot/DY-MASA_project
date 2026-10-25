@@ -171,6 +171,16 @@ class CodeRiskEvidenceExtractor:
                         truncated_rules.append(rule.evidence_type)
                     continue
                 seen_per_rule[rule.evidence_type] = seen_per_rule.get(rule.evidence_type, 0) + 1
+                ownership = self._ownership(path)
+                local_endpoint = rule.evidence_type == "cleartext_http_endpoint" and bool(
+                    re.search(r"https?://(?:localhost|127\.0\.0\.1|0\.0\.0\.0)(?::\d+)?(?:/|$)", match.group(0), re.IGNORECASE)
+                )
+                confidence = "low" if local_endpoint else rule.confidence
+                description = (
+                    "A localhost or loopback HTTP reference was found; this is commonly a development/configuration value and is not evidence of production cleartext traffic."
+                    if local_endpoint
+                    else rule.description
+                )
                 results.append(
                     EvidenceItem(
                         category=EvidenceCategory.code_risk,
@@ -181,14 +191,24 @@ class CodeRiskEvidenceExtractor:
                             "line": line_number,
                             "matched_context": self._redact(stripped),
                             "matched_value": self._redact(match.group(0)),
-                            "confidence": rule.confidence,
-                            "description": rule.description,
+                            "confidence": confidence,
+                            "description": description,
+                            "ownership": ownership,
                         },
                         source_path=path,
                         source_node=f"line:{line_number}",
                     )
                 )
         return results
+
+    @classmethod
+    def _ownership(cls, path: Path) -> str:
+        normalized = path.as_posix().lower()
+        if any(fragment in normalized for fragment in cls.COMMON_LIBRARY_PATH_FRAGMENTS):
+            return "third_party_library"
+        if "/b3nac/injuredandroid/" in normalized or "b3nac.injuredandroid" in normalized:
+            return "first_party_application"
+        return "unknown"
 
     def _record_unreadable(self, path: Path) -> None:
         self.limit_metadata["unreadable_files"] += 1

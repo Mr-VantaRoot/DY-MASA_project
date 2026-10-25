@@ -92,7 +92,7 @@ class GhidraTests(unittest.TestCase):
             processes = [FakeProcess(returncode=7), FakeProcess(returncode=0)]
             with patch("analysis.ghidra.subprocess.Popen", side_effect=processes):
                 result = GhidraAnalyzer(self.settings(headless)).run(apktool, root)
-            self.assertEqual(result.status, "failed")
+            self.assertEqual(result.status, "partial")
             self.assertEqual([item["status"] for item in result.library_results], ["failed", "completed"])
             self.assertEqual(result.library_results[0]["exit_code"], 7)
 
@@ -134,7 +134,7 @@ class GhidraTests(unittest.TestCase):
             processes = [FakeProcess(returncode=3), FakeProcess(returncode=4), FakeProcess(returncode=0)]
             with patch("analysis.ghidra.subprocess.Popen", side_effect=processes):
                 result = GhidraAnalyzer(self.settings(headless)).run(apktool, root)
-            self.assertEqual(result.status, "failed")
+            self.assertEqual(result.status, "partial")
             self.assertEqual(len(result.library_results), 3)
             self.assertEqual(result.library_results[-1]["status"], "completed")
 

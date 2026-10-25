@@ -409,7 +409,7 @@ class EvidenceFindingGenerator:
 
         findings: list[FindingCandidate] = []
         for evidence_type, items in sorted(grouped.items()):
-            title, severity, category, rationale, remediation, masvs, cvss = self._code_risk_metadata(evidence_type, len(items))
+            title, severity, category, rationale, remediation, masvs, cvss = self._code_risk_metadata(evidence_type, len(items), items)
             findings.append(
                 FindingCandidate(
                     rule_id=f"android-code-risk-{evidence_type}",
@@ -450,7 +450,20 @@ class EvidenceFindingGenerator:
     def _code_risk_metadata(
         evidence_type: str,
         count: int,
+        items: list[AnalysisEvidence] | None = None,
     ) -> tuple[str, FindingSeverity, str, str, str, str, str]:
+        if evidence_type == "cleartext_http_endpoint" and items and all(
+            json.loads(item.value_json).get("confidence") == "low" for item in items
+        ):
+            return (
+                f"{count} localhost HTTP reference(s) require review",
+                FindingSeverity.info,
+                "Network Security",
+                "Informational because localhost or loopback references commonly represent development configuration and do not establish production cleartext exposure.",
+                "Confirm whether the reference is development-only; use HTTPS for any production endpoint.",
+                "MASVS-NETWORK",
+                "0.0",
+            )
         labels = {
             "cleartext_http_endpoint": (
                 f"{count} cleartext HTTP endpoint candidate(s) found",
@@ -481,9 +494,9 @@ class EvidenceFindingGenerator:
             ),
             "insecure_webview_javascript": (
                 f"{count} WebView JavaScript enablement point(s) found",
-                FindingSeverity.low,
+                FindingSeverity.info,
                 "WebView",
-                "Low as a static finding because JavaScript can be legitimate; risk increases with untrusted content or exposed bridges.",
+                "Informational because JavaScript can be legitimate; risk requires untrusted content, weak origin control, or an exposed bridge.",
                 "Restrict loaded origins, avoid untrusted content, and pair JavaScript enablement with strict WebView hardening.",
                 "MASVS-PLATFORM",
                 "3.7",

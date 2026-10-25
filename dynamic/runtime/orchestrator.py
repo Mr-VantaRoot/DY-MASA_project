@@ -594,7 +594,12 @@ class DynamicRuntimeOrchestrator:
             self.adb.clear_logcat(device)
             self.adb.log_marker(device, marker)
             if action_kind == "activity":
-                result = self.adb.start_activity(component_name, device)
+                explicit_component = self._explicit_activity_component(package_name, component_name)
+                if explicit_component is None:
+                    result = AdbResult([], 2, "", "Invalid Android activity component name; validation was not attempted.")
+                    status = "not_attempted"
+                else:
+                    result = self.adb.start_activity(explicit_component, device)
             elif action_kind == "service":
                 result = self.adb.resolve_service(component_name, device)
             elif action_kind == "provider":
@@ -615,8 +620,14 @@ class DynamicRuntimeOrchestrator:
             self._record_artifact(db, job, step_path, "adb-logcat-step", step_capture.exit_code)
 
             if action_kind in {"activity", "deep_link"}:
-                status = "observed" if self.adb.am_start_succeeded(result) else "not_reproducible"
-                detail = "The Android start command completed successfully; this confirms reachability only." if status == "observed" else result.stderr or result.stdout
+                if status != "not_attempted":
+                    if result.exit_code == -1:
+                        status = "timed_out"
+                    elif self.adb.am_start_succeeded(result):
+                        status = "launch_succeeded"
+                    else:
+                        status = "launch_failed"
+                detail = "The Android start command completed successfully; this confirms reachability only." if status == "launch_succeeded" else result.stderr or result.stdout or "The Android start command did not establish reachability."
             elif action_kind == "service":
                 status = "observed" if result.ok and component_name in result.stdout else "not_reproducible"
                 detail = "The exported service resolved through the package manager; invocation was intentionally skipped for safety." if status == "observed" else result.stderr or result.stdout
@@ -667,6 +678,17 @@ class DynamicRuntimeOrchestrator:
         if "." not in component_name:
             return package_name + "." + component_name
         return component_name
+
+    @staticmethod
+    def _explicit_activity_component(package_name: str, component_name: str) -> str | None:
+        """Build the package/class form required by `am start -n`."""
+        if not package_name or not component_name or any(char.isspace() for char in component_name):
+            return None
+        if "/" in package_name or "/" in component_name:
+            return None
+        if not component_name.startswith(package_name + "."):
+            return None
+        return f"{package_name}/{component_name}"
 
     @staticmethod
     def _runtime_uri(value: dict[str, object]) -> str | None:

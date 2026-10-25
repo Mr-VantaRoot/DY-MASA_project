@@ -415,6 +415,16 @@ class ConfirmedBugTests(unittest.TestCase):
             self.assertLess(names.index("log_marker"), names.index("start_activity"))
             self.assertLess(names.index("start_activity"), names.index("dump_logcat"))
 
+    def test_activity_validation_uses_explicit_package_class_syntax(self) -> None:
+        self.assertEqual(
+            DynamicRuntimeOrchestrator._explicit_activity_component(
+                "b3nac.injuredandroid", "b3nac.injuredandroid.MainActivity"
+            ),
+            "b3nac.injuredandroid/b3nac.injuredandroid.MainActivity",
+        )
+        self.assertIsNone(DynamicRuntimeOrchestrator._explicit_activity_component("pkg", "Main Activity"))
+        self.assertIsNone(DynamicRuntimeOrchestrator._explicit_activity_component("pkg", "other.Main"))
+
     def test_code_risk_validation_does_not_execute_true(self) -> None:
         with TemporaryDirectory() as temp:
             orchestrator, adb = self._fake_runtime(Path(temp), AdbResult(["adb"], 0, "", ""))
