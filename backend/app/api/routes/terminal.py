@@ -164,9 +164,11 @@ class LocalTerminal:
             if "=" in token:
                 candidates.append(token.split("=", 1)[1])
             for candidate in candidates:
-                if not candidate.startswith(("/", "./", "../")):
+                # Validate nested relative paths too (e.g. "assets/../../etc/passwd"),
+                # not only paths that begin with "./" or "../".
+                if not candidate.startswith(("/", "./", "../")) and "/" not in candidate and "\\" not in candidate:
                     continue
-                path = Path(candidate)
+                path = Path(candidate).expanduser()
                 resolved = path.resolve() if path.is_absolute() else (working_directory / path).resolve()
                 if not self._is_allowed_path(resolved):
                     raise HTTPException(
