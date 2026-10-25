@@ -2,7 +2,7 @@
 
 ## Honest One-Sentence Description
 
-This project is a local, AI-assisted Android static security assessment platform that uploads an APK, reverse engineers it with real tools, extracts evidence, generates rule-based findings, and exports an evidence-backed report.
+This project is a local Android security assessment platform that uploads an APK, reverse engineers it with real tools, extracts evidence, generates rule-based findings, optionally performs bounded ADB runtime validation, and exports an evidence-backed report.
 
 It is not a full autonomous mobile penetration testing system yet.
 
@@ -10,7 +10,7 @@ It is not a full autonomous mobile penetration testing system yet.
 
 1. The user uploads an `.apk` file through the React dashboard.
 2. The FastAPI backend validates that the file is a real APK/ZIP container.
-3. A PostgreSQL-backed analysis job is created.
+3. An analysis job is created in PostgreSQL when available, or in the supported local SQLite fallback.
 4. The backend stores the APK locally under `storage/uploads`.
 5. The backend creates a per-job workspace under `storage/workspaces/{job_id}`.
 6. The backend calculates the APK SHA-256 hash.
@@ -100,13 +100,13 @@ Examples:
 
 Each finding links back to extracted evidence IDs. The report should not contain unsupported vulnerabilities.
 
-## What The AI Layer Currently Is
+## What The Reasoning Layer Currently Is
 
-The current AI layer is intentionally a placeholder.
+The current reasoning layer is intentionally deterministic.
 
 It is called `deterministic-structured-summary`.
 
-It does not call Ollama or an LLM yet. It summarizes findings, creates validation paths, and explains limitations using deterministic logic.
+It does not call Ollama or another LLM. It summarizes findings, creates validation paths, and explains limitations using deterministic logic.
 
 This was done intentionally because adding an LLM before improving evidence quality would make the output sound confident without making it more correct.
 
@@ -120,7 +120,7 @@ This MVP can defend the following claims:
 - It generates findings only from stored evidence.
 - It exports HTML and PDF reports.
 - It is honest about static-analysis limitations.
-- It is designed so a future LLM or Ollama module can be added behind the reasoning interface.
+- It is designed so a future LLM or Ollama module could be added behind the reasoning interface, without making that a dependency of the current platform.
 
 ## What This MVP Cannot Honestly Claim
 
@@ -128,7 +128,7 @@ Do not claim these:
 
 - It performs full mobile penetration testing.
 - It confirms exploitability.
-- It dynamically runs the APK.
+- It performs a complete autonomous dynamic penetration test.
 - It exploits SQL injection, XSS, RCE, or deeplink vulnerabilities.
 - It bypasses root/debugger detection.
 - It proves secrets are live/valid.
@@ -138,7 +138,7 @@ Do not claim these:
 
 Say:
 
-> This is an evidence-backed static Android security assessment MVP. It uses apktool and JADX to extract real APK evidence, applies deterministic security rules, and generates a professional report. The AI layer is currently abstracted as a deterministic reasoning module, so the system is ready for Ollama or another LLM later, but it does not depend on an LLM to invent findings.
+> This is an evidence-backed Android security assessment MVP. It uses apktool and JADX to extract real APK evidence, applies deterministic security rules, optionally validates selected runtime behavior through ADB, and generates a professional report. The reasoning layer is deterministic; it does not depend on an LLM to invent findings.
 
 Do not say:
 
@@ -154,13 +154,13 @@ Not fully. It is a static assessment pipeline that supports pentesting. It ident
 
 Yes. It runs apktool and JADX against the uploaded APK and analyzes their output.
 
-### Does the AI find vulnerabilities?
+### Does the reasoning layer find vulnerabilities?
 
 Not yet. The current reasoning layer is deterministic. It summarizes and prioritizes rule-generated findings. A future LLM can reason over the same evidence, but it should still be evidence-constrained.
 
 ### Can it detect SQL injection or XSS?
 
-Not reliably yet. That requires deeper code/data-flow analysis and ideally dynamic validation. The current MVP can flag raw SQL construction as a review candidate, but it does not confirm SQL injection. It focuses on manifest, resource, component, deep link, high-confidence secret evidence, and selected code-risk patterns.
+It can optionally install and launch an authorized APK on a ready emulator or explicitly permitted physical device and collect bounded runtime observations. That is not comprehensive dynamic testing. SQL injection, XSS, and similar claims still require deeper data-flow analysis and manual/runtime validation.
 
 ### Why not add Ollama now?
 

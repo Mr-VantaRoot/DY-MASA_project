@@ -331,7 +331,7 @@ Edit `.env` for your machine. The example contains placeholder paths and must no
 bash work/check-environment.sh
 ```
 
-This helper checks Java, the configured/default apktool and JADX JAR paths, ADB, and whether PostgreSQL is accepting connections. It is an initial check, not a guarantee that every feature—including Ghidra and the emulator—is fully configured.
+This helper loads the project `.env` when present, then checks Java, the configured/default apktool and JADX JAR paths, ADB, and whether PostgreSQL is accepting connections. It is an initial check, not a guarantee that every feature—including Ghidra and the emulator—is fully configured.
 
 ### 3. Install backend dependencies
 
@@ -430,26 +430,44 @@ Useful commands:
 
 ```text
 dy-masa overview                         real job/result totals
-dy-masa history                          browse a scan and its related records
+dy-masa history                          list persisted scan records
 dy-masa jobs                             list persisted jobs
 dy-masa job JOB_ID                       inspect stages and report files
-dy-masa findings [--job-id JOB_ID]       list findings
-dy-masa evidence [--job-id JOB_ID]       list evidence
+dy-masa findings [options]               list/filter findings
+dy-masa evidence [options]               list/filter evidence
 dy-masa reasoning [--job-id JOB_ID]      show deterministic summaries
 dy-masa reports [--job-id JOB_ID]        list reports and file presence
 dy-masa dynamic status                   inspect ADB/emulator status
 dy-masa dynamic start JOB_ID             queue a safe dynamic run
 dy-masa dynamic events JOB_ID            show runtime stages
 dy-masa dynamic evidence JOB_ID          show runtime evidence
+dy-masa dynamic artifacts JOB_ID         list runtime artifacts
 dy-masa health                           check database and tools
 dy-masa config                           show non-secret configuration
 ```
 
-Use `--quiet` for command output without the interactive banner and
-`--no-color` when terminal styling is not desired. `analyze` reports persisted
-job stages while it runs and returns nonzero for invalid input, failed or
-cancelled jobs, missing reports, or database failures. It uses the existing
-atomic worker claim and does not manually run individual analysis stages.
+Global options are `--quiet` (suppress the interactive banner) and `--no-color`
+(disable terminal styling). The analysis command is:
+
+```text
+dy-masa analyze APK_PATH [--poll-interval SECONDS] [--ghidra | --no-ghidra]
+```
+
+`--ghidra` and `--no-ghidra` are mutually exclusive and override the configured
+per-scan default. `--poll-interval` controls status polling and defaults to one
+second. `analyze` validates the APK, reports persisted job stages while it runs,
+and returns nonzero for invalid input, failed or cancelled jobs, missing reports,
+or database failures. It uses the existing atomic worker claim and does not
+manually run individual analysis stages.
+
+The read commands support these actual options:
+
+- `jobs`: `--limit`, `--page`, `--page-size`, `--search`, and `--status`.
+- `findings`: `--job-id`, `--severity`, `--search`, `--category`, `--page`,
+  `--page-size`, and `--detail FINDING_ID`.
+- `evidence`: `--job-id`, `--search`, `--category`, `--page`, `--page-size`,
+  and `--detail EVIDENCE_ID`.
+- `reports` and `reasoning`: `--job-id`.
 
 Non-interactive list commands return every matching persisted record by default
 (`findings`, `evidence`, `reports`, `reasoning`, and `jobs` with no page/limit
@@ -477,6 +495,15 @@ scan's overview, findings, evidence, reasoning, reports, job details, or
 dynamic records. The submenu includes **New Scan** at the bottom. Scan and
 dynamic actions remain explicit so a user cannot accidentally launch a device
 operation while navigating the menu.
+
+Interactive navigation accepts the displayed numbers and shortcuts: `1`/`o`
+Overview, `2` New Scan, `3`/`f` Findings, `4`/`e` Evidence, `5` Reasoning,
+`6`/`r` Reports, `7`/`j` Jobs, `8` Dynamic, `9` Health, `10`/`s` Settings,
+`11`/`hst` History, `h`/`?` Help, and `q`/`0` Exit. Within a selected scan,
+`o`, `f`, `e`, `w`, `r`, `j`, and `d` open its scoped views; `n` starts a new
+scan and `x` goes back. Dynamic views use `s` Status, `e` Events, `v` Runtime
+Evidence, `a` Runtime Artifacts, `t` Start, and `x` Back. Invalid selections,
+empty states, Ctrl+C, and EOF return safely without deleting jobs.
 
 ### CLI feature parity checklist
 

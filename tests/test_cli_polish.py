@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from app.cli.dymasa.cli import _interactive_dynamic, _interactive_history, _interactive_scan, interactive, main
+from app.cli.dymasa.cli import _interactive_dynamic, _interactive_history, _interactive_scan, _safe_database_url, interactive, main
 from app.cli.dymasa.runner import run_analysis
 
 
@@ -52,6 +52,11 @@ class _InteractiveOutput:
 
 
 class CliPolishTests(unittest.TestCase):
+    def test_database_display_redacts_credentials(self):
+        displayed = _safe_database_url("postgresql+psycopg://postgres:secret@localhost:5432/MASA_DB")
+        self.assertNotIn("secret", displayed)
+        self.assertEqual(displayed, "postgresql+psycopg://postgres:<redacted>@localhost:5432/MASA_DB")
+
     def test_interactive_scan_prompts_for_path_and_starts_real_runner(self):
         with tempfile.NamedTemporaryFile(suffix=".apk") as apk:
             with patch("builtins.input", side_effect=["2", apk.name, "off", "0"]), patch(

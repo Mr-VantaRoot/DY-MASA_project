@@ -7,10 +7,10 @@ Do not present this MVP as a complete manual penetration test.
 Present it as:
 
 ```text
-An evidence-backed Android static security assessment platform with an AI-ready reasoning layer.
+An evidence-backed Android security assessment platform with deterministic reasoning and an optional, bounded ADB runtime-validation stage.
 ```
 
-The system performs real APK decompilation, evidence extraction, rule-backed finding generation, structured reasoning, and HTML/PDF reporting.
+The system performs real APK decompilation, evidence extraction, rule-backed finding generation, structured reasoning, optional native analysis, optional bounded runtime validation, and HTML/PDF reporting.
 
 ## What Was Improved After Review
 
@@ -22,15 +22,17 @@ The system performs real APK decompilation, evidence extraction, rule-backed fin
 - Wildcard or weakly scoped deep links are rated higher than ordinary deep links.
 - ContentProvider and FileProvider declarations now trigger review findings where appropriate.
 - JADX output is scanned for possible hardcoded secrets, keys, tokens, Firebase config references, and password-like assignments.
-- The AI section was renamed to structured risk summary because no real LLM is wired in yet.
+- The reasoning section is labelled structured risk summary because no live LLM is wired in.
+- Ghidra is optional and off by default; when enabled, native-library coverage is reported per library.
+- DY-MASA runtime validation is optional, requires a ready authorized emulator or explicitly permitted physical device, and records failures or partial results honestly.
 
 ## Honest Limitations
 
-- No dynamic testing is performed yet.
+- Runtime validation is limited to selected install, launch, deep-link, logcat, screenshot, and metadata checks; it is not a full manual or instrumented pentest.
 - SQL injection, XSS, RCE, weak crypto, debugger bypass, and root bypass findings require deeper code analysis or dynamic validation.
 - Code-secret detection is a first-pass triage scanner and requires manual validation.
 - Severity values are evidence-based estimates, not final manual pentest ratings.
 
 ## Strong Demo Message
 
-The project does not claim exploitability from manifest evidence alone. It separates extracted evidence, rule-backed findings, structured risk summaries, and report generation so future dynamic testing and deeper code analysis can be added cleanly.
+The project does not claim exploitability from manifest evidence alone. It separates extracted evidence, rule-backed findings, structured risk summaries, runtime observations, and report generation. A runtime observation is not proof of exploitability.

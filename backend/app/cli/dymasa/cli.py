@@ -86,13 +86,28 @@ def _banner(output: Output) -> None:
     output.status_line("◆ DY-MASA  //  LOCAL ANDROID SECURITY WORKBENCH")
 
 
+def _safe_database_url(value: str) -> str:
+    """Display database selection without exposing embedded credentials."""
+    if "://" not in value:
+        return value
+    scheme, separator, rest = value.partition("://")
+    if "@" not in rest:
+        return value
+    credentials, _, host = rest.rpartition("@")
+    username = credentials.split(":", 1)[0]
+    return f"{scheme}{separator}{username}:<redacted>@{host}"
+
+
 def _dependency_rows() -> list[tuple[str, str, str]]:
+    from app.core.config import get_settings
+
+    settings = get_settings()
     rows = [
         ("Python", sys.version.split()[0], "required"),
-        ("Java", shutil.which("java") or "not found", "required for APK analysis"),
-        ("apktool", shutil.which("apktool") or "configured JAR", "required for APK analysis"),
-        ("JADX", shutil.which("jadx") or "configured JAR", "required for APK analysis"),
-        ("ADB", shutil.which("adb") or "not found", "optional for dynamic analysis"),
+        ("Java", str(settings.java_path), "configured executable; required for APK analysis"),
+        ("apktool", str(settings.apktool_jar_path), "configured JAR; required for APK analysis"),
+        ("JADX", str(settings.jadx_jar_path), "configured CLI JAR; required for APK analysis"),
+        ("ADB", str(settings.adb_path), "configured executable; optional for dynamic analysis"),
         ("Rich", "installed" if importlib.util.find_spec("rich") else "not installed", "optional CLI styling"),
     ]
     return rows
@@ -103,9 +118,9 @@ def check(output: Output) -> int:
 
     from .database import project_root
 
-    output.screen("Tools & Environment", "dependency and workspace check")
+    output.screen("Tools & Environment", "configured paths and database selection (no tool execution)")
     output.print(f"Project root: {project_root()}")
-    output.print(f"Database URL: {os.environ.get('MOBILE_PENTEST_DATABASE_URL', 'not selected')}")
+    output.print(f"Database URL: {_safe_database_url(os.environ.get('MOBILE_PENTEST_DATABASE_URL', 'not selected'))}")
     output.print(f"Storage directory: {project_root() / 'storage'}")
     for name, value, note in _dependency_rows():
         output.print(f"{name}: {value} ({note})")
@@ -224,12 +239,13 @@ def _read_command(args, output: Output) -> int:
             if item is None:
                 output.panel("EVIDENCE", "Evidence record not found.", "yellow")
                 return 1
-            output.panel("EVIDENCE DETAIL", f"{item.label}\nCategory: {item.category.value}\nType: {item.evidence_type}\nSource: {item.source_path}:{item.source_node or ''}\n\n{item.value_json}", "cyan")
+            source = read.safe_source_path(item.source_path, settings.storage_root)
+            output.panel("EVIDENCE DETAIL", f"{item.label}\nCategory: {item.category.value}\nType: {item.evidence_type}\nSource: {source}:{item.source_node or ''}\n\n{item.value_json}", "cyan")
             return 0
         output.table(
             f"Evidence // {'all records' if page_size is None else f'page {page} ({offset + 1 if evidence else 0}-{offset + len(evidence)} of {total})'}",
             ("#", "Category", "Label", "Source", "ID"),
-            ((offset + index, item.category.value, item.label, f"{item.source_path}:{item.source_node or ''}", item.id[:8]) for index, item in enumerate(evidence, 1)),
+            ((offset + index, item.category.value, item.label, f"{read.safe_source_path(item.source_path, settings.storage_root)}:{item.source_node or ''}", item.id[:8]) for index, item in enumerate(evidence, 1)),
         )
         if not evidence:
             output.panel("EVIDENCE", "No evidence found for the selected job.", "green")
@@ -260,12 +276,12 @@ def _health_command(output: Output) -> int:
     from app.services.tool_checker import ToolChecker
 
     settings = get_settings()
-    output.screen("Health", "database, tools, and prerequisites")
+    output.screen("Health", "live database connectivity and configured tool execution")
     try:
         database_ok = check_database()
     except Exception as exc:
         database_ok = False
-        output.print(f"Database: unavailable ({exc})")
+        output.print(f"Database: unavailable ({_safe_database_url(str(exc))})")
     if database_ok:
         output.print("Database: available")
     tools_ok = True
@@ -340,7 +356,7 @@ def _dynamic_command(args, output: Output) -> int:
                 evidence = _with_session(lambda db: read.list_runtime_evidence(db, args.job_id))
                 rows = evidence
                 for row in evidence:
-                    output.print(f"{row.id}  {row.evidence_type}  {row.label}  {row.source_path}")
+                    output.print(f"{row.id}  {row.evidence_type}  {row.label}  {read.safe_source_path(row.source_path, settings.storage_root)}")
             else:
                 rows = _with_session(lambda db: read.list_runtime_artifacts(db, args.job_id))
                 for artifact in rows:

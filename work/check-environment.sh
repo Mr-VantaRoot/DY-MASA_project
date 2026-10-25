@@ -4,6 +4,16 @@ set -u
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 ok=0
 
+# Use the same local configuration as the Python application when checking
+# configured tool paths. .env is a trusted project-local configuration file;
+# values are exported for the checks but never printed as raw assignments.
+if [[ -f .env ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source .env
+  set +a
+fi
+
 check_file() {
   local label="$1"
   local path="$2"

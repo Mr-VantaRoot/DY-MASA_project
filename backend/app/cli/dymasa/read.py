@@ -313,3 +313,14 @@ def report_path(path: str, storage_root: Path) -> tuple[str, bool]:
     except (OSError, ValueError):
         return "[outside approved storage]", False
     return str(resolved), resolved.is_file()
+
+
+def safe_source_path(path: str, storage_root: Path) -> str:
+    """Render an evidence source without exposing the host workspace root."""
+    candidate = Path(path)
+    try:
+        relative = candidate.resolve().relative_to(storage_root.resolve())
+    except (OSError, ValueError):
+        name = candidate.name or "unknown-source"
+        return f"[external source]/{name}"
+    return str(Path("storage") / relative)
