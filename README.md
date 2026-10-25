@@ -537,7 +537,7 @@ Settings are loaded from `.env` and environment variables using the `MOBILE_PENT
 | `DATABASE_URL` | Unset; overrides PostgreSQL URL | SQLAlchemy database URL |
 | `POSTGRES_HOST` | `localhost` | PostgreSQL host |
 | `POSTGRES_PORT` | `5432` | PostgreSQL port |
-| `POSTGRES_DB` | `mobile_pentest_mvp` in code; `.env.example` uses `MASA_DB` | Database name |
+| `POSTGRES_DB` | `MASA_DB` | Database name |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` | `postgres` / empty in code | Database credentials |
 | `JAVA_PATH` | Discovered Java executable when available, otherwise a legacy default | Java executable |
 | `APKTOOL_JAR_PATH` | Legacy Windows path unless configured | apktool JAR |

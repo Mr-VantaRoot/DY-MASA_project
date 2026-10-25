@@ -337,6 +337,16 @@ class JobService(_JobStorageHelpers):
                 "Uploaded file is not a valid APK ZIP container. The file was saved, but analysis was not started. "
                 "Re-download the APK and avoid XAPK/APKM/split bundles renamed as .apk."
             )
+        try:
+            with zipfile.ZipFile(apk_path) as archive:
+                corrupt_member = archive.testzip()
+                if corrupt_member is not None:
+                    return f"Uploaded APK contains a corrupt ZIP entry ({corrupt_member}). The file was saved, but analysis was not started."
+                names = set(archive.namelist())
+        except (OSError, zipfile.BadZipFile) as exc:
+            return f"Uploaded APK ZIP contents could not be read ({exc}). The file was saved, but analysis was not started."
+        if "AndroidManifest.xml" not in names:
+            return "Uploaded file is missing AndroidManifest.xml and is not a complete APK. The file was saved, but analysis was not started."
         return None
 
 

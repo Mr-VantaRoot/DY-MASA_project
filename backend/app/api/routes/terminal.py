@@ -47,10 +47,13 @@ class LocalTerminal:
     }
     INTERPRETER_CODE_FLAGS = {"-c", "--command", "-command", "-encodedcommand"}
     SAFE_SYSTEM_EXECUTABLES = {
-        "ls", "pwd", "echo", "printf", "cat", "head", "tail", "grep", "rg",
+        "cd", "clear", "true", "false", "ls", "pwd", "echo", "printf", "cat", "head", "tail", "grep", "rg",
         "find", "sort", "cut", "tr", "sed", "awk", "wc", "date", "file",
-        "git", "python", "python3", "pgcli", "psql", "adb", "java",
+        "git",
     }
+    SAFE_GIT_SUBCOMMANDS = {"status", "log", "diff", "branch", "show", "rev-parse"}
+    BLOCKED_TOOL_COMMANDS = {"python", "python3", "perl", "ruby", "node", "pgcli", "psql", "adb", "java"}
+    BLOCKED_FIND_ARGUMENTS = {"-exec", "-execdir", "-delete", "-ok", "-okdir"}
     CWD_MARKER = "__CODEX_TERMINAL_CWD__"
     EXIT_MARKER = "__CODEX_TERMINAL_EXIT__"
 
@@ -109,12 +112,14 @@ class LocalTerminal:
             tokens = shlex.split(command, posix=True)
         except ValueError:
             return
-        operators = {";", "&&", "||", "|", "&"}
+        operators = {";", "&&", "||", "|", "&", ">", ">>", "<"}
         expecting_command = True
         for index, token in enumerate(tokens):
             if token in operators:
-                expecting_command = True
-                continue
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Pipelines, command chaining, and shell redirection are disabled in the MASA terminal.",
+                )
             if not expecting_command:
                 continue
             command_name = Path(token).name.lower()
@@ -126,14 +131,27 @@ class LocalTerminal:
                         "Run it in a separate system terminal instead."
                     ),
                 )
-            if command_name in {"python", "python3", "perl", "ruby", "node"} and (
-                index + 1 >= len(tokens) or tokens[index + 1] in operators or any(
-                    flag.lower() in self.INTERPRETER_CODE_FLAGS for flag in tokens[index + 1 :]
-                )
-            ):
+            if command_name in self.BLOCKED_TOOL_COMMANDS:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Inline interpreter execution is disabled in the MASA terminal.",
+                    detail=f"'{command_name}' is not available in the MASA terminal allowlist.",
+                )
+            if command_name == "find" and any(argument.lower() in self.BLOCKED_FIND_ARGUMENTS for argument in tokens[index + 1 :]):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Process execution and deletion options are disabled for find.",
+                )
+            if command_name == "git":
+                subcommand = next((argument.lower() for argument in tokens[index + 1 :] if not argument.startswith("-")), None)
+                if subcommand not in self.SAFE_GIT_SUBCOMMANDS:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Only read-only Git inspection commands are available in the MASA terminal.",
+                    )
+            if command_name not in self.SAFE_SYSTEM_EXECUTABLES:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Command '{command_name}' is not in the MASA terminal allowlist.",
                 )
             expecting_command = False
 

@@ -15,7 +15,11 @@ fi
 
 if [[ -n "${MOBILE_PENTEST_DATABASE_URL:-}" ]]; then
   echo "Using the explicitly configured database URL."
-elif command -v pg_isready >/dev/null 2>&1 && pg_isready -q; then
+elif command -v pg_isready >/dev/null 2>&1 && pg_isready -q \
+  -h "${MOBILE_PENTEST_POSTGRES_HOST:-localhost}" \
+  -p "${MOBILE_PENTEST_POSTGRES_PORT:-5432}" \
+  -d "${MOBILE_PENTEST_POSTGRES_DB:-MASA_DB}" \
+  -U "${MOBILE_PENTEST_POSTGRES_USER:-postgres}"; then
   echo "Using PostgreSQL at the configured host."
 else
   echo "PostgreSQL is unavailable; using the local SQLite demo database."

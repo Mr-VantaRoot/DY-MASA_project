@@ -24,6 +24,16 @@ class FakeStorageAdb(AdbClient):
 
 
 class Stage3SafetyTests(unittest.TestCase):
+    def test_terminal_allowlist_rejects_unknown_commands_and_shell_operators(self) -> None:
+        terminal = LocalTerminal(Path.cwd())
+        for command in ("uname", "pwd; echo escaped", "echo one | cat", "python script.py", "git clone https://example.invalid/x", "find . -exec cat {} \\"):
+            with self.subTest(command=command), self.assertRaises(HTTPException):
+                terminal.run(command)
+
+    def test_terminal_allows_basic_read_only_commands(self) -> None:
+        response = LocalTerminal(Path.cwd()).run("pwd")
+        self.assertEqual(response.exit_code, 0)
+
     def test_emulator_is_preferred_and_phone_requires_opt_in(self) -> None:
         manager = EmulatorManager(Path("/sdk"), Path("/adb"), Path("/emulator"), "Dy-MASA")
         devices = [AdbDevice("1047433361006458", "device"), AdbDevice("emulator-5554", "device")]
