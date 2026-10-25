@@ -69,7 +69,7 @@ class Settings(BaseSettings):
     max_upload_bytes: int = 300 * 1024 * 1024
     max_concurrent_analysis_jobs: int = 1
 
-    ghidra_enabled: bool = True
+    ghidra_enabled: bool = False
     ghidra_headless_path: Path | None = None
     ghidra_timeout_seconds: int = 900
     ghidra_library_timeout_seconds: int = 300

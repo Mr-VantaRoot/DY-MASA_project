@@ -25,12 +25,19 @@ def final_exit_code(details: dict[str, Any]) -> int:
 
 
 def _database_session():
-    from app.db.session import SessionLocal
+    from app.db.session import SessionLocal, ensure_local_schema_updates
 
+    ensure_local_schema_updates()
     return SessionLocal()
 
 
-def run_analysis(apk_path: Path, settings: Any, output: Any, poll_interval: float = 1.0) -> int:
+def run_analysis(
+    apk_path: Path,
+    settings: Any,
+    output: Any,
+    poll_interval: float = 1.0,
+    ghidra_enabled: bool | None = None,
+) -> int:
     """Create one job and monitor the existing worker until a terminal state."""
 
     from app.services.job_service import JobService, submit_analysis_job
@@ -38,12 +45,13 @@ def run_analysis(apk_path: Path, settings: Any, output: Any, poll_interval: floa
 
     try:
         with _database_session() as db:
-            job = JobService(db, settings).create_job_from_path(apk_path)
+            job = JobService(db, settings).create_job_from_path(apk_path, ghidra_enabled=ghidra_enabled)
     except Exception as exc:
         output.print(f"Analysis could not be started: {exc}")
         return 1
 
     output.print(f"Job ID: {job.id}")
+    output.print(f"Ghidra native analysis: {'ENABLED' if getattr(job, 'ghidra_enabled', False) else 'DISABLED'}")
     if getattr(job.status, "value", job.status) != "queued":
         output.print(f"Analysis rejected: {job.error_message or job.current_step}")
         return 1
@@ -53,26 +61,32 @@ def run_analysis(apk_path: Path, settings: Any, output: Any, poll_interval: floa
         if not submitted:
             output.print("Job queued; waiting for an available analysis worker.")
         last_state: tuple[object, ...] | None = None
-        while True:
-            with _database_session() as db:
-                details = read.job_details(db, job.id)
-            current = details["job"]
-            status = getattr(current.status, "value", current.status)
-            latest_stage = details["stages"][-1] if details["stages"] else None
-            state = (
-                status,
-                current.progress,
-                current.current_step,
-                latest_stage.stage if latest_stage else None,
-                latest_stage.status if latest_stage else None,
-            )
-            if state != last_state:
-                stage_text = f"; stage={latest_stage.stage} ({latest_stage.status})" if latest_stage else ""
-                output.print(f"[{status}] {current.progress}% {current.current_step}{stage_text}")
+        with output.progress_context() as progress:
+            task_id = progress.add_task("Starting analysis", total=100) if progress else None
+            while True:
+                with _database_session() as db:
+                    details = read.job_details(db, job.id)
+                current = details["job"]
+                status = getattr(current.status, "value", current.status)
+                latest_stage = details["stages"][-1] if details["stages"] else None
+                state = (
+                    status,
+                    current.progress,
+                    current.current_step,
+                    latest_stage.stage if latest_stage else None,
+                    latest_stage.status if latest_stage else None,
+                )
+                stage_text = f"{current.current_step} // {status}"
+                if latest_stage:
+                    stage_text = f"{stage_text} // {latest_stage.stage} ({latest_stage.status})"
+                if progress and task_id is not None:
+                    progress.update(task_id, completed=max(0, min(100, current.progress)), description=stage_text)
+                elif state != last_state:
+                    output.print(f"[{status}] {current.progress}% {stage_text}")
                 last_state = state
-            if status in TERMINAL_STATUSES:
-                break
-            time.sleep(max(0.1, poll_interval))
+                if status in TERMINAL_STATUSES:
+                    break
+                time.sleep(max(0.1, poll_interval))
     except KeyboardInterrupt:
         job_cancellation_registry.cancel(job.id)
         output.print("Cancellation requested; waiting for the worker to record the final state.")

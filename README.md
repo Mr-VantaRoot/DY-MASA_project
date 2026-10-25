@@ -414,13 +414,23 @@ application database engine:
 ```bash
 /path/to/MASA/work/dy-masa --help
 /path/to/MASA/work/dy-masa check
+/path/to/MASA/work/dy-masa history
 /path/to/MASA/work/dy-masa analyze "/path/to/authorized-app.apk"
+/path/to/MASA/work/dy-masa analyze --ghidra "/path/to/authorized-app.apk"
 ```
+
+Ghidra is off by default for new scans. Use `--ghidra` or `--no-ghidra` to
+override it for one CLI scan. The interactive Scan APK action presents the
+same ON/OFF choice before creating the job. The web Scan page has the same
+per-scan toggle; its selection is stored with the job and is not only a UI
+preference. Enabling Ghidra can substantially increase CPU, RAM, disk, and
+scan time on an 8 GB machine.
 
 Useful commands:
 
 ```text
 dy-masa overview                         real job/result totals
+dy-masa history                          browse a scan and its related records
 dy-masa jobs                             list persisted jobs
 dy-masa job JOB_ID                       inspect stages and report files
 dy-masa findings [--job-id JOB_ID]       list findings
@@ -442,8 +452,11 @@ cancelled jobs, missing reports, or database failures. It uses the existing
 atomic worker claim and does not manually run individual analysis stages.
 
 The interactive CLI is started with no command and includes the same read-only
-views. Scan and dynamic actions remain explicit commands so a user cannot
-accidentally launch a device operation while navigating the menu.
+views. Choose **History** to select one persisted scan, then open only that
+scan's overview, findings, evidence, reasoning, reports, job details, or
+dynamic records. The submenu includes **New Scan** at the bottom. Scan and
+dynamic actions remain explicit so a user cannot accidentally launch a device
+operation while navigating the menu.
 
 ### CLI feature parity checklist
 
@@ -523,7 +536,7 @@ Settings are loaded from `.env` and environment variables using the `MOBILE_PENT
 | `APKTOOL_JAR_PATH` | Legacy Windows path unless configured | apktool JAR |
 | `JADX_JAR_PATH` | Legacy Windows path unless configured | JADX CLI JAR |
 | `TOOL_TIMEOUT_SECONDS` | `600` | General tool timeout |
-| `GHIDRA_ENABLED` | `true` | Enable/disable optional native analysis |
+| `GHIDRA_ENABLED` | `false` | Default Ghidra choice for new scans; individual scans can override it |
 | `GHIDRA_HEADLESS_PATH` | Unset | Path to Ghidra's `analyzeHeadless` executable |
 | `GHIDRA_TIMEOUT_SECONDS` | `900` seconds | Overall Ghidra time budget per analysis |
 | `GHIDRA_LIBRARY_TIMEOUT_SECONDS` | `300` seconds | Per-library Ghidra time budget used to size the batch timeout |

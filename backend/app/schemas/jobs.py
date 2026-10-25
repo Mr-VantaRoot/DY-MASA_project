@@ -10,6 +10,7 @@ class AnalysisJobResponse(BaseModel):
     original_filename: str
     file_size_bytes: int
     sha256: str | None
+    ghidra_enabled: bool
     status: AnalysisJobStatus
     progress: int
     current_step: str

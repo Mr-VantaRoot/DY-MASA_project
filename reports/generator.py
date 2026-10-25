@@ -3,7 +3,7 @@ from html import escape
 from pathlib import Path
 import json
 
-from app.db.base import AnalysisEvidence, AnalysisFinding, AnalysisJob, AnalysisReasoning
+from app.db.base import AnalysisEvidence, AnalysisFinding, AnalysisJob, AnalysisJobStage, AnalysisReasoning
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import LETTER
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -71,6 +71,82 @@ def _display_evidence_label(item: AnalysisEvidence) -> str:
     return item.label
 
 
+GHIDRA_DISABLED_NOTICE = (
+    "Analysis limitation: Ghidra native-code analysis was not performed for this scan. "
+    "Findings that require Ghidra-based native-code analysis may be absent."
+)
+DYNAMIC_NOT_PERFORMED_NOTICE = (
+    "Analysis limitation: This report covers static analysis only. Dynamic analysis was not performed, "
+    "so runtime behavior has not been assessed."
+)
+
+
+def _dynamic_evidence_present(evidence: list[AnalysisEvidence]) -> bool:
+    return any(
+        item.category.value == "runtime" and item.evidence_type.startswith("dynamic_")
+        for item in evidence
+    )
+
+
+def _dynamic_state(evidence: list[AnalysisEvidence], stages: list[AnalysisJobStage] | None = None) -> str:
+    if _dynamic_evidence_present(evidence):
+        return "performed"
+    dynamic_stages = [stage for stage in (stages or []) if stage.stage.startswith("dynamic_")]
+    if any(stage.status in {"failed", "cancelled"} for stage in dynamic_stages):
+        return "failed"
+    if any(stage.status in {"running", "queued"} for stage in dynamic_stages):
+        return "in_progress"
+    if any(stage.status == "completed" for stage in dynamic_stages):
+        return "performed"
+    return "not_performed"
+
+
+def _ghidra_state(job: AnalysisJob, evidence: list[AnalysisEvidence]) -> tuple[str, str]:
+    """Return actual per-scan Ghidra state, tolerating historical jobs."""
+
+    selected = getattr(job, "ghidra_enabled", None)
+    native_items = [item for item in evidence if item.evidence_type == "ghidra_analysis"]
+    payload: dict[str, object] = {}
+    if native_items:
+        try:
+            decoded = json.loads(native_items[-1].value_json)
+            if isinstance(decoded, dict):
+                payload = decoded
+        except (TypeError, json.JSONDecodeError):
+            payload = {}
+    status = str(payload.get("status", "")).lower()
+    detail = str(payload.get("detail", ""))
+    if selected is False or (status == "skipped" and "disabled" in detail.lower()):
+        return "disabled", GHIDRA_DISABLED_NOTICE
+    if status in {"completed", "partial", "timed_out", "failed", "cancelled"}:
+        return status, f"Ghidra native-code analysis status: {status}. Review native-library coverage and per-library outcomes below."
+    if status == "skipped":
+        return "not_applicable", "Ghidra native-code analysis was not applicable or was skipped; no completed native analysis is included."
+    if selected is True:
+        return "unknown", "Ghidra native-code analysis was selected, but its final result was not recorded; native coverage is unknown."
+    return "unknown", "Ghidra native-code analysis status was not recorded for this historical scan."
+
+
+def _analysis_limitation_lines(
+    job: AnalysisJob,
+    evidence: list[AnalysisEvidence],
+    stages: list[AnalysisJobStage] | None = None,
+) -> list[str]:
+    lines = []
+    ghidra_status, ghidra_message = _ghidra_state(job, evidence)
+    lines.append(ghidra_message)
+    dynamic_state = _dynamic_state(evidence, stages)
+    if dynamic_state == "performed":
+        lines.append("Dynamic analysis was performed for the recorded device/runtime steps; its scope and outcomes are shown below and do not prove exploitability.")
+    elif dynamic_state == "failed":
+        lines.append("Analysis limitation: Dynamic analysis was attempted but did not complete successfully. Runtime behavior is not fully assessed; review the recorded failure stages.")
+    elif dynamic_state == "in_progress":
+        lines.append("Analysis limitation: Dynamic analysis was started but was not complete when this report was generated. Runtime behavior is only partially assessed.")
+    else:
+        lines.append(DYNAMIC_NOT_PERFORMED_NOTICE)
+    return lines
+
+
 class HtmlReportGenerator:
     def generate(
         self,
@@ -79,11 +155,12 @@ class HtmlReportGenerator:
         findings: list[AnalysisFinding],
         reasoning: list[AnalysisReasoning],
         report_dir: Path,
+        stages: list[AnalysisJobStage] | None = None,
     ) -> Path:
         report_dir.mkdir(parents=True, exist_ok=True)
         report_path = report_dir / f"{job.id}.html"
         report_path.write_text(
-            self._render(job, evidence, findings, reasoning, report_dir),
+            self._render(job, evidence, findings, reasoning, report_dir, stages),
             encoding="utf-8",
         )
         return report_path
@@ -95,6 +172,7 @@ class HtmlReportGenerator:
         findings: list[AnalysisFinding],
         reasoning: list[AnalysisReasoning],
         report_dir: Path,
+        stages: list[AnalysisJobStage] | None = None,
     ) -> str:
         evidence_by_id = {item.id: item for item in evidence}
         latest_reasoning = reasoning[-1] if reasoning else None
@@ -126,8 +204,8 @@ class HtmlReportGenerator:
   <h1>MASA Report</h1>
   <p class="meta">Generated {escape(datetime.utcnow().isoformat())} UTC</p>
   {self._job_summary(job)}
-  {self._scope_limitations(evidence)}
-  {self._runtime_limitations(evidence)}
+  {self._scope_limitations(job, evidence, stages)}
+  {self._runtime_limitations(evidence, stages)}
   {self._executive_summary(findings, latest_reasoning)}
   {self._key_findings(findings)}
   {self._findings(findings, evidence_by_id, evidence, report_dir)}
@@ -136,17 +214,19 @@ class HtmlReportGenerator:
   {self._dynamic_validation_section(evidence, report_dir)}
   {self._evidence(evidence, report_dir)}
   {self._reasoning(latest_reasoning)}
+  {self._final_notes(job, evidence, stages)}
 </body>
 </html>
 """
 
     @staticmethod
-    def _scope_limitations(evidence: list[AnalysisEvidence]) -> str:
-        runtime_count = sum(item.category.value == "runtime" for item in evidence)
+    def _scope_limitations(job: AnalysisJob, evidence: list[AnalysisEvidence], stages: list[AnalysisJobStage] | None = None) -> str:
+        runtime_count = sum(item.category.value == "runtime" and item.evidence_type.startswith("dynamic_") for item in evidence)
+        dynamic_state = _dynamic_state(evidence, stages)
         runtime_note = (
             f"<li>DY-MASA recorded {runtime_count} runtime evidence records from an emulator/device run. These records confirm command outcomes and collected artifacts, not exploitability.</li>"
-            if runtime_count
-            else "<li>No DY-MASA runtime run was included when this report was generated.</li>"
+            if dynamic_state == "performed"
+            else f"<li>{escape(_analysis_limitation_lines(job, evidence, stages)[1])}</li>"
         )
         native_note = ""
         native_items = [item for item in evidence if item.evidence_type == "ghidra_analysis"]
@@ -178,21 +258,28 @@ class HtmlReportGenerator:
                     f"{escape(str(coverage.get('partial', 0)))} partial out of "
                     f"{escape(str(discovered))} discovered; {escape(coverage_suffix)}</li>"
                 )
+        ghidra_status, ghidra_message = _ghidra_state(job, evidence)
         return """
 <h2>Scope and Limitations</h2>
 <p>This report is an automated Android security assessment. It is designed to support mobile pentesting, not replace manual validation.</p>
 <ul>
+  <li><strong>Ghidra (%s):</strong> %s</li>
   %s
   %s
   <li>Manifest findings indicate exposed attack surface, not confirmed exploitability.</li>
   <li>Code/string findings are triage candidates and require manual validation.</li>
   <li>Severity values are evidence-based estimates and should be adjusted after manual review.</li>
 </ul>
-""" % (runtime_note, native_note)
+""" % (escape(ghidra_status), escape(ghidra_message), runtime_note, native_note)
 
     @staticmethod
-    def _runtime_limitations(evidence: list[AnalysisEvidence]) -> str:
-        if not any(item.category.value == "runtime" for item in evidence):
+    def _final_notes(job: AnalysisJob, evidence: list[AnalysisEvidence], stages: list[AnalysisJobStage] | None = None) -> str:
+        notes = "".join(f"<li>{escape(line)}</li>" for line in _analysis_limitation_lines(job, evidence, stages))
+        return f"<h2>Final Analysis Notes</h2><ul>{notes}</ul>"
+
+    @staticmethod
+    def _runtime_limitations(evidence: list[AnalysisEvidence], stages: list[AnalysisJobStage] | None = None) -> str:
+        if _dynamic_state(evidence, stages) != "performed":
             return """
 <h2>Runtime Test Boundaries</h2>
 <p>No emulator/device evidence was available. Runtime behavior remains unverified.</p>
@@ -473,6 +560,7 @@ class PdfReportGenerator:
         findings: list[AnalysisFinding],
         reasoning: list[AnalysisReasoning],
         report_dir: Path,
+        stages: list[AnalysisJobStage] | None = None,
     ) -> Path:
         report_dir.mkdir(parents=True, exist_ok=True)
         report_path = report_dir / f"{job.id}.pdf"
@@ -485,7 +573,7 @@ class PdfReportGenerator:
             bottomMargin=0.7 * inch,
             title=f"MASA Report - {job.original_filename}",
         )
-        document.build(self._story(job, evidence, findings, reasoning, report_dir))
+        document.build(self._story(job, evidence, findings, reasoning, report_dir, stages))
         return report_path
 
     def _story(
@@ -495,6 +583,7 @@ class PdfReportGenerator:
         findings: list[AnalysisFinding],
         reasoning: list[AnalysisReasoning],
         report_dir: Path,
+        stages: list[AnalysisJobStage] | None = None,
     ) -> list[object]:
         styles = getSampleStyleSheet()
         title = styles["Title"]
@@ -512,7 +601,7 @@ class PdfReportGenerator:
         latest_reasoning = reasoning[-1] if reasoning else None
         runtime_scope = (
             "DY-MASA runtime testing was performed; runtime records distinguish observed behavior from potential risk and do not by themselves prove exploitability."
-            if any(item.category.value == "runtime" for item in evidence)
+            if _dynamic_state(evidence, stages) == "performed"
             else "No DY-MASA runtime testing was performed for this report."
         )
         story: list[object] = [
@@ -537,10 +626,11 @@ class PdfReportGenerator:
                 ),
                 body,
             ),
+            *self._analysis_coverage_story(job, evidence, stages, heading, body),
             *self._native_coverage_story(evidence, heading, body),
             Spacer(1, 0.2 * inch),
             Paragraph("Runtime Test Boundaries", heading),
-            *self._runtime_limitations_story(evidence, body),
+            *self._runtime_limitations_story(evidence, stages, body),
             Spacer(1, 0.2 * inch),
             Paragraph("Executive Summary", heading),
             Paragraph(self._safe_text(self._executive_summary_text(findings, latest_reasoning)), body),
@@ -579,7 +669,38 @@ class PdfReportGenerator:
             ]
         )
         story.extend(self._reasoning_story(latest_reasoning, body))
+        story.extend(
+            [
+                Spacer(1, 0.2 * inch),
+                Paragraph("Final Analysis Notes", heading),
+                *[Paragraph(self._safe_text(line), body) for line in _analysis_limitation_lines(job, evidence, stages)],
+            ]
+        )
         return story
+
+    @staticmethod
+    def _analysis_coverage_story(
+        job: AnalysisJob,
+        evidence: list[AnalysisEvidence],
+        stages: list[AnalysisJobStage] | None,
+        heading: ParagraphStyle,
+        body: ParagraphStyle,
+    ) -> list[object]:
+        status, ghidra_message = _ghidra_state(job, evidence)
+        return [
+            Paragraph("Analysis Coverage", heading),
+            Paragraph(
+                PdfReportGenerator._safe_text(f"Ghidra native analysis: {status}. {ghidra_message}"),
+                body,
+            ),
+            Paragraph(
+                PdfReportGenerator._safe_text(
+                    DYNAMIC_NOT_PERFORMED_NOTICE if _dynamic_state(evidence, stages) == "not_performed"
+                    else _analysis_limitation_lines(job, evidence, stages)[1]
+                ),
+                body,
+            ),
+        ]
 
     @staticmethod
     def _native_coverage_story(evidence: list[AnalysisEvidence], heading: ParagraphStyle, body: ParagraphStyle) -> list[object]:
@@ -807,9 +928,15 @@ class PdfReportGenerator:
         return story
 
     @staticmethod
-    def _runtime_limitations_story(evidence: list[AnalysisEvidence], body: ParagraphStyle) -> list[object]:
-        if not any(item.category.value == "runtime" for item in evidence):
-            return [Paragraph("No emulator/device evidence was available; runtime behavior remains unverified.", body)]
+    def _runtime_limitations_story(evidence: list[AnalysisEvidence], stages: list[AnalysisJobStage] | None, body: ParagraphStyle) -> list[object]:
+        dynamic_state = _dynamic_state(evidence, stages)
+        if dynamic_state != "performed":
+            limitation = {
+                "not_performed": DYNAMIC_NOT_PERFORMED_NOTICE,
+                "failed": "Analysis limitation: Dynamic analysis was attempted but did not complete successfully. Runtime behavior is not fully assessed; review the recorded failure stages.",
+                "in_progress": "Analysis limitation: Dynamic analysis was started but was not complete when this report was generated. Runtime behavior is only partially assessed.",
+            }.get(dynamic_state, DYNAMIC_NOT_PERFORMED_NOTICE)
+            return [Paragraph(PdfReportGenerator._safe_text(limitation), body)]
         return [
             Paragraph("Exported activities and deep links are checked for dispatch or reachability only; authorization and input handling require manual testing.", body),
             Paragraph("Receiver and content-provider invocation is intentionally skipped to avoid modifying application state or accessing data without an explicit test plan.", body),

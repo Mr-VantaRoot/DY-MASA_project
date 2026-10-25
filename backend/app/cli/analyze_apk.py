@@ -12,6 +12,10 @@ from app.services.job_service import JobRunner, JobService
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run the local APK analysis pipeline for one APK.")
     parser.add_argument("apk_path", help="Full path to an APK you are authorized to test.")
+    ghidra = parser.add_mutually_exclusive_group()
+    ghidra.add_argument("--ghidra", dest="ghidra_enabled", action="store_true", help="Enable Ghidra native analysis for this scan.")
+    ghidra.add_argument("--no-ghidra", dest="ghidra_enabled", action="store_false", help="Disable Ghidra native analysis for this scan.")
+    parser.set_defaults(ghidra_enabled=None)
     args = parser.parse_args()
 
     try:
@@ -19,7 +23,7 @@ def main() -> int:
         init_db()
 
         with SessionLocal() as db:
-            job = JobService(db, settings).create_job_from_path(Path(args.apk_path))
+            job = JobService(db, settings).create_job_from_path(Path(args.apk_path), ghidra_enabled=args.ghidra_enabled)
             print(f"created_job={job.id}")
 
         JobRunner(settings).prepare_uploaded_apk(job.id)

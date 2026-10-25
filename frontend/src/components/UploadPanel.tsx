@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { UploadCloud, CheckCircle2, Loader2, XCircle } from "lucide-react";
+import { UploadCloud, CheckCircle2, Loader2, XCircle, Cpu } from "lucide-react";
 import { API_BASE_URL, formatApiError } from "../lib/api";
 
 export function UploadPanel({ onUploadComplete }: { onUploadComplete: (jobId: string) => void }) {
@@ -7,6 +7,9 @@ export function UploadPanel({ onUploadComplete }: { onUploadComplete: (jobId: st
   const [dragActive, setDragActive] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [ghidraEnabled, setGhidraEnabled] = useState(() =>
+    typeof window !== "undefined" && window.localStorage.getItem("dy-masa-ghidra-enabled") === "true",
+  );
   const abortRef = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -29,6 +32,7 @@ export function UploadPanel({ onUploadComplete }: { onUploadComplete: (jobId: st
     setError(null);
     const formData = new FormData();
     formData.append("apk", selectedFile);
+    formData.append("ghidra_enabled", String(ghidraEnabled));
 
     try {
       const response = await fetch(`${API_BASE_URL}/jobs`, { method: "POST", body: formData, signal: controller.signal });
@@ -86,6 +90,31 @@ export function UploadPanel({ onUploadComplete }: { onUploadComplete: (jobId: st
             onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
           />
         </div>
+
+        <label className="flex items-start gap-3 rounded-lg border border-border bg-secondary/30 px-3 py-3 cursor-pointer hover:border-accent/50 transition-colors">
+          <input
+            type="checkbox"
+            checked={ghidraEnabled}
+            onChange={(event) => {
+              const enabled = event.target.checked;
+              setGhidraEnabled(enabled);
+              window.localStorage.setItem("dy-masa-ghidra-enabled", String(enabled));
+            }}
+            className="mt-1 accent-cyan-400"
+          />
+          <span className="min-w-0">
+            <span className="flex items-center gap-2 text-xs font-bold text-foreground">
+              <Cpu size={14} className="text-accent" />
+              Ghidra native analysis
+              <span className={`ml-auto text-[10px] uppercase tracking-wider ${ghidraEnabled ? "text-accent" : "text-muted-foreground"}`}>
+                {ghidraEnabled ? "ON" : "OFF"}
+              </span>
+            </span>
+            <span className="block text-[11px] text-muted-foreground mt-1">
+              Optional ELF library analysis. Enabling it increases scan time and CPU/RAM usage.
+            </span>
+          </span>
+        </label>
 
         <div className="flex gap-2">
           <button

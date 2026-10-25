@@ -12,6 +12,8 @@ import {
   ShieldCheck,
   Activity,
   Radar,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import { useJobStateContext } from "../../contexts/JobStateContext";
 
@@ -28,27 +30,43 @@ const NAV_ITEMS = [
   { path: "/health", label: "System Health", icon: HeartPulse },
 ] as const;
 
-export function Sidebar() {
+export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
   const [location] = useLocation();
   const jobState = useJobStateContext();
 
   const criticalCount = jobState.findings.filter((f) => f.severity === "critical").length;
 
   return (
-    <aside className="w-[240px] shrink-0 h-full border-r border-border bg-sidebar flex flex-col hidden md:flex">
-      <div className="h-[72px] flex items-center gap-3 px-5 border-b border-border shrink-0">
+    <aside className={`${collapsed ? "w-[72px]" : "w-[240px]"} relative transition-[width] duration-200 shrink-0 h-full border-r border-border bg-sidebar flex flex-col hidden md:flex`}>
+      <div className={`h-[72px] flex items-center ${collapsed ? "justify-center px-2" : "gap-3 px-5"} border-b border-border shrink-0`}>
         <div className="w-9 h-9 bg-accent text-accent-foreground rounded flex items-center justify-center font-bold text-lg shrink-0">
           M
         </div>
-        <div className="flex flex-col overflow-hidden">
+        {!collapsed && <div className="flex flex-col overflow-hidden">
           <h1 className="text-base font-bold leading-tight truncate">MASA</h1>
           <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-widest truncate">
             Mobile App Security
           </span>
-        </div>
+        </div>}
+        {!collapsed && <button
+          onClick={onToggle}
+          aria-label="Collapse sidebar"
+          title="Collapse sidebar"
+          className="ml-auto w-8 h-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary/70"
+        >
+          <PanelLeftClose size={17} />
+        </button>}
+        {collapsed && <button
+          onClick={onToggle}
+          aria-label="Expand sidebar"
+          title="Expand sidebar"
+          className="absolute left-[52px] top-5 w-8 h-8 flex items-center justify-center rounded-md border border-border bg-sidebar text-muted-foreground hover:text-foreground hover:bg-secondary/70"
+        >
+          <PanelLeftOpen size={17} />
+        </button>}
       </div>
 
-      <nav className="flex-1 overflow-y-auto py-4 px-3 flex flex-col gap-1">
+      <nav className={`flex-1 overflow-y-auto py-4 ${collapsed ? "px-2" : "px-3"} flex flex-col gap-1`}>
         {NAV_ITEMS.map(({ path, label, icon: Icon }) => {
           const isActive = location === path;
           const showBadge = path === "/findings" && criticalCount > 0;
@@ -56,14 +74,15 @@ export function Sidebar() {
             <Link
               key={path}
               href={path}
-              className={`group relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all duration-150 ${
+              title={collapsed ? label : undefined}
+              className={`group relative flex items-center ${collapsed ? "justify-center px-3" : "gap-3 px-3"} py-2.5 rounded-lg text-sm font-semibold transition-all duration-150 ${
                 isActive
                   ? "bg-accent/10 text-accent border border-accent/30"
                   : "text-muted-foreground border border-transparent hover:bg-secondary/60 hover:text-foreground"
               }`}
             >
               <Icon size={17} className={isActive ? "text-accent" : "group-hover:text-foreground"} />
-              <span className="truncate">{label}</span>
+              {!collapsed && <span className="truncate">{label}</span>}
               {isActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-accent rounded-r" />}
               {showBadge && (
                 <span className="ml-auto bg-critical text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
@@ -75,7 +94,7 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="p-4 border-t border-border shrink-0">
+      <div className={`${collapsed ? "p-2" : "p-4"} border-t border-border shrink-0`}>
         <div
           className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold border ${
             jobState.isBackendConnected
@@ -84,7 +103,7 @@ export function Sidebar() {
           }`}
         >
           {jobState.isBackendConnected ? <ShieldCheck size={14} /> : <Activity size={14} />}
-          {jobState.isBackendConnected ? "Backend Connected" : "Backend Offline"}
+          {!collapsed && (jobState.isBackendConnected ? "Backend Connected" : "Backend Offline")}
         </div>
       </div>
     </aside>

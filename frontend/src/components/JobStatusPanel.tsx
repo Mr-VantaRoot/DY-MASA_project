@@ -32,6 +32,9 @@ export function JobStatusPanel({
           <div>
             <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wide mb-1">Active Job</h2>
             <h3 className="text-xl font-bold text-foreground break-all">{activeJob.original_filename}</h3>
+          <p className="text-[11px] text-muted-foreground mt-2">
+            Ghidra native analysis: <span className={activeJob.ghidra_enabled ? "text-accent font-bold" : "font-bold"}>{activeJob.ghidra_enabled ? "ON" : "OFF"}</span>
+          </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <StatusPill status={activeJob.status} />

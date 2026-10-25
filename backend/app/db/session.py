@@ -1,6 +1,6 @@
 from collections.abc import Generator
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -47,9 +47,26 @@ def init_db() -> None:
 
 
 def ensure_local_schema_updates() -> None:
+    if engine.dialect.name == "sqlite":
+        inspector = inspect(engine)
+        if "analysis_jobs" not in inspector.get_table_names():
+            return
+        columns = {column["name"] for column in inspector.get_columns("analysis_jobs")}
+        if "ghidra_enabled" not in columns:
+            with engine.begin() as connection:
+                connection.execute(
+                    text("ALTER TABLE analysis_jobs ADD COLUMN ghidra_enabled BOOLEAN NOT NULL DEFAULT 0")
+                )
+        return
     if engine.dialect.name != "postgresql":
         return
     with engine.begin() as connection:
+        connection.execute(
+            text(
+                "ALTER TABLE analysis_jobs ADD COLUMN IF NOT EXISTS "
+                "ghidra_enabled BOOLEAN NOT NULL DEFAULT FALSE"
+            )
+        )
         # Additive migration for durable SSE history. Base.metadata.create_all handles
         # fresh databases; this guard also upgrades existing PostgreSQL installations.
         connection.execute(

@@ -4,7 +4,7 @@ import time
 from dataclasses import replace
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import select
@@ -125,12 +125,13 @@ def _sse_event(event: JobStageEvent) -> str:
 @router.post("", response_model=AnalysisJobResponse, status_code=status.HTTP_202_ACCEPTED)
 def upload_apk(
     apk: UploadFile = File(...),
+    ghidra_enabled: bool | None = Form(default=None),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> AnalysisJobResponse:
     service = JobService(db, settings)
     try:
-        job = service.create_upload_job(apk)
+        job = service.create_upload_job(apk, ghidra_enabled=ghidra_enabled)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 

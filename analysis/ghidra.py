@@ -46,6 +46,7 @@ class GhidraAnalyzer:
         workspace_path: Path,
         cancel_event: Event | None = None,
         progress_callback: LibraryEvent | None = None,
+        enabled: bool | None = None,
     ) -> NativeAnalysisResult:
         native_libraries = tuple(sorted(apktool_output_path.glob("lib/**/*.so")))
         output_path = workspace_path / "ghidra"
@@ -58,7 +59,7 @@ class GhidraAnalyzer:
             self._write_log(log_path, detail)
             return NativeAnalysisResult("ghidra", "skipped", output_path, log_path, None, (), detail)
 
-        if not self._settings.ghidra_enabled:
+        if not (self._settings.ghidra_enabled if enabled is None else enabled):
             detail = "Ghidra analysis is disabled by configuration."
             self._write_log(log_path, detail)
             results = tuple(self._library_result(library, "skipped", "Ghidra analysis is disabled by configuration.") for library in native_libraries)

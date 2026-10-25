@@ -205,7 +205,7 @@ class JobService(_JobStorageHelpers):
         self._db = db
         self._settings = settings
 
-    def create_upload_job(self, upload: UploadFile) -> AnalysisJob:
+    def create_upload_job(self, upload: UploadFile, ghidra_enabled: bool | None = None) -> AnalysisJob:
         self._validate_apk_filename(upload.filename)
         self._settings.upload_dir.mkdir(parents=True, exist_ok=True)
 
@@ -228,14 +228,14 @@ class JobService(_JobStorageHelpers):
             apk_path.unlink(missing_ok=True)
             raise
 
-        job = self._create_job_record(job_id, original_filename, stored_filename, apk_path)
+        job = self._create_job_record(job_id, original_filename, stored_filename, apk_path, ghidra_enabled)
         record_job_stage(job, "upload_received", "completed", "Upload received and validated", f"Stored as {stored_filename}")
         emit_job_event(job.id, "upload_received", "completed", "Upload received and validated", f"Stored as {stored_filename}", db=self._db)
         if job.status == AnalysisJobStatus.failed:
             emit_job_event(job.id, "job_failed", "failed", job.current_step, job.error_message, db=self._db)
         return job
 
-    def create_job_from_path(self, source_path: Path) -> AnalysisJob:
+    def create_job_from_path(self, source_path: Path, ghidra_enabled: bool | None = None) -> AnalysisJob:
         if not source_path.exists():
             raise ValueError(f"APK does not exist: {source_path}")
         self._validate_apk_filename(source_path.name)
@@ -248,7 +248,7 @@ class JobService(_JobStorageHelpers):
             raise ValueError(f"APK exceeds the maximum size of {self._settings.max_upload_bytes} bytes.")
         shutil.copyfile(source_path, apk_path)
 
-        job = self._create_job_record(job_id, source_path.name, stored_filename, apk_path)
+        job = self._create_job_record(job_id, source_path.name, stored_filename, apk_path, ghidra_enabled)
         record_job_stage(job, "upload_received", "completed", "Upload received and validated", f"Stored as {stored_filename}")
         emit_job_event(job.id, "upload_received", "completed", "Upload received and validated", f"Stored as {stored_filename}", db=self._db)
         if job.status == AnalysisJobStatus.failed:
@@ -261,6 +261,7 @@ class JobService(_JobStorageHelpers):
         original_filename: str,
         stored_filename: str,
         apk_path: Path,
+        ghidra_enabled: bool | None = None,
     ) -> AnalysisJob:
         file_size = apk_path.stat().st_size
         validation_error = self._apk_validation_error(apk_path, file_size)
@@ -275,6 +276,7 @@ class JobService(_JobStorageHelpers):
             progress=0,
             current_step="Upload validation failed" if validation_error else "Queued for APK preparation",
             error_message=validation_error,
+            ghidra_enabled=self._settings.ghidra_enabled if ghidra_enabled is None else bool(ghidra_enabled),
         )
         self._db.add(job)
         self._db.commit()
@@ -309,12 +311,13 @@ class JobService(_JobStorageHelpers):
         evidence = self._load_evidence(self._db, job)
         findings = self._load_findings(self._db, job)
         reasoning = self._load_reasoning(self._db, job)
+        stages = list(self._db.scalars(select(AnalysisJobStage).where(AnalysisJobStage.job_id == job.id).order_by(AnalysisJobStage.created_at.asc())).all())
         html_report_path = HtmlReportGenerator().generate(
-            job=job, evidence=evidence, findings=findings, reasoning=reasoning, report_dir=self._settings.report_dir
+            job=job, evidence=evidence, findings=findings, reasoning=reasoning, report_dir=self._settings.report_dir, stages=stages
         )
         self._record_report(self._db, job, "html", html_report_path)
         pdf_report_path = PdfReportGenerator().generate(
-            job=job, evidence=evidence, findings=findings, reasoning=reasoning, report_dir=self._settings.report_dir
+            job=job, evidence=evidence, findings=findings, reasoning=reasoning, report_dir=self._settings.report_dir, stages=stages
         )
         self._record_report(self._db, job, "pdf", pdf_report_path)
 
@@ -455,9 +458,11 @@ class JobRunner(_JobStorageHelpers):
         record_job_stage(job, "jadx_decompile", "completed", "JADX decompile complete", f"Exit code {jadx_result.exit_code}")
         emit_job_event(job.id, "jadx_decompile", "completed", "JADX decompile complete", f"Exit code {jadx_result.exit_code}", db=db)
 
-        self._mark(db, job, AnalysisJobStatus.running, 96, "Running optional Ghidra native analysis")
-        record_job_stage(job, "ghidra_analysis", "running", "Ghidra native analysis running", "Inspecting embedded native libraries when available")
-        emit_job_event(job.id, "ghidra_analysis", "running", "Ghidra native analysis running", "Inspecting embedded native libraries when available", db=db)
+        ghidra_selected = bool(getattr(job, "ghidra_enabled", False))
+        if ghidra_selected:
+            self._mark(db, job, AnalysisJobStatus.running, 96, "Running optional Ghidra native analysis")
+            record_job_stage(job, "ghidra_analysis", "running", "Ghidra native analysis running", "Inspecting embedded native libraries when available")
+            emit_job_event(job.id, "ghidra_analysis", "running", "Ghidra native analysis running", "Inspecting embedded native libraries when available", db=db)
         def ghidra_progress(event: dict[str, object]) -> None:
             library = str(event.get("library", "native library"))
             state = str(event.get("status", "unknown"))
@@ -472,11 +477,15 @@ class JobRunner(_JobStorageHelpers):
             emit_job_event(job.id, "ghidra_library", state, f"Ghidra library {state}: {library}", detail, db=db)
 
         ghidra_result = GhidraAnalyzer(self._settings).run(
-            apktool_result.output_path, workspace_path, cancel_event, progress_callback=ghidra_progress
+            apktool_result.output_path,
+            workspace_path,
+            cancel_event,
+            progress_callback=ghidra_progress,
+            enabled=ghidra_selected,
         )
         summary_path = GhidraAnalyzer.write_summary(ghidra_result)
         self._record_analysis_artifacts(db, job, ghidra_result, summary_path)
-        stage_status = "completed" if ghidra_result.status in {"completed", "skipped"} else "failed"
+        stage_status = "completed" if ghidra_result.status == "completed" else "skipped" if ghidra_result.status == "skipped" else "failed"
         record_job_stage(job, "ghidra_analysis", stage_status, f"Ghidra native analysis {ghidra_result.status}", ghidra_result.detail)
         emit_job_event(job.id, "ghidra_analysis", stage_status, f"Ghidra native analysis {ghidra_result.status}", ghidra_result.detail, db=db)
         return DecompilationOutputs(apktool=apktool_result, jadx=jadx_result, ghidra=ghidra_result)
@@ -557,12 +566,14 @@ class JobRunner(_JobStorageHelpers):
         self._mark(db, job, AnalysisJobStatus.running, 99, "Generating professional reports")
         record_job_stage(job, "report_generation", "running", "Report generation running", "Creating HTML and PDF reports")
         emit_job_event(job.id, "report_generation", "running", "Report generation running", "Creating HTML and PDF reports", db=db)
+        stages = list(db.scalars(select(AnalysisJobStage).where(AnalysisJobStage.job_id == job.id).order_by(AnalysisJobStage.created_at.asc())).all())
         html_report_path = HtmlReportGenerator().generate(
             job=job,
             evidence=evidence,
             findings=findings,
             reasoning=reasoning,
             report_dir=self._settings.report_dir,
+            stages=stages,
         )
         self._record_report(db, job, "html", html_report_path)
         pdf_report_path = PdfReportGenerator().generate(
@@ -571,6 +582,7 @@ class JobRunner(_JobStorageHelpers):
             findings=findings,
             reasoning=reasoning,
             report_dir=self._settings.report_dir,
+            stages=stages,
         )
         self._record_report(db, job, "pdf", pdf_report_path)
         record_job_stage(job, "report_generation", "completed", "Report generation complete", f"Generated {html_report_path.name} and {pdf_report_path.name}")

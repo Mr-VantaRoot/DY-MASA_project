@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import Enum
 from uuid import uuid4
 
-from sqlalchemy import DateTime, Enum as SqlEnum, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Enum as SqlEnum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -59,6 +59,7 @@ class AnalysisJob(Base):
         nullable=False,
         default=AnalysisJobStatus.queued,
     )
+    ghidra_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     progress: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     current_step: Mapped[str] = mapped_column(String(255), nullable=False, default="Queued")
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)

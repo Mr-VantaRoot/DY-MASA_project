@@ -19,7 +19,7 @@ from app.db.base import (
 
 
 def list_jobs(db: Any, limit: int | None = None) -> list[AnalysisJob]:
-    query = select(AnalysisJob).order_by(AnalysisJob.created_at.desc())
+    query = select(AnalysisJob).order_by(AnalysisJob.created_at.desc(), AnalysisJob.id.desc())
     if limit is not None:
         query = query.limit(limit)
     return list(db.scalars(query).all())
@@ -88,7 +88,7 @@ def job_details(db: Any, job_id: str) -> dict[str, Any]:
 
 
 def list_findings(db: Any, job_id: str | None = None, severity: str | None = None) -> list[AnalysisFinding]:
-    query = select(AnalysisFinding).order_by(AnalysisFinding.created_at.desc())
+    query = select(AnalysisFinding).order_by(AnalysisFinding.severity.desc(), AnalysisFinding.created_at.asc(), AnalysisFinding.id.asc())
     if job_id:
         query = query.where(AnalysisFinding.job_id == job_id)
     if severity:
@@ -97,14 +97,14 @@ def list_findings(db: Any, job_id: str | None = None, severity: str | None = Non
 
 
 def list_evidence(db: Any, job_id: str | None = None) -> list[AnalysisEvidence]:
-    query = select(AnalysisEvidence).order_by(AnalysisEvidence.created_at.desc())
+    query = select(AnalysisEvidence).order_by(AnalysisEvidence.category.asc(), AnalysisEvidence.created_at.asc(), AnalysisEvidence.id.asc())
     if job_id:
         query = query.where(AnalysisEvidence.job_id == job_id)
     return list(db.scalars(query).all())
 
 
 def list_reports(db: Any, job_id: str | None = None) -> list[AnalysisReport]:
-    query = select(AnalysisReport).order_by(AnalysisReport.created_at.desc())
+    query = select(AnalysisReport).order_by(AnalysisReport.created_at.desc(), AnalysisReport.id.desc())
     if job_id:
         query = query.where(AnalysisReport.job_id == job_id)
     return list(db.scalars(query).all())
@@ -122,17 +122,62 @@ def list_dynamic_stages(db: Any, job_id: str) -> list[AnalysisJobStage]:
 def list_runtime_evidence(db: Any, job_id: str) -> list[AnalysisEvidence]:
     query = (
         select(AnalysisEvidence)
-        .where(AnalysisEvidence.job_id == job_id, AnalysisEvidence.category == "runtime")
-        .order_by(AnalysisEvidence.created_at.asc())
+        .where(
+            AnalysisEvidence.job_id == job_id,
+            AnalysisEvidence.category == "runtime",
+            AnalysisEvidence.evidence_type.like("dynamic_%"),
+        )
+        .order_by(AnalysisEvidence.created_at.asc(), AnalysisEvidence.id.asc())
+    )
+    return list(db.scalars(query).all())
+
+
+def dynamic_result_message(db: Any, job_id: str, kind: str) -> str | None:
+    stages = list_dynamic_stages(db, job_id)
+    if not stages:
+        return "Dynamic analysis was not performed for this scan."
+    if any(stage.status == "failed" for stage in stages):
+        return "Dynamic analysis failed for this scan; no complete runtime data is available."
+    if any(stage.status in {"running", "queued"} for stage in stages):
+        return "Dynamic analysis is still in progress for this scan."
+    messages = {
+        "events": "Dynamic analysis produced no events for this scan.",
+        "evidence": "Dynamic analysis completed without runtime evidence for this scan.",
+        "artifacts": "Dynamic analysis completed without runtime artifacts for this scan.",
+    }
+    return messages[kind]
+
+
+def list_runtime_artifacts(db: Any, job_id: str) -> list[AnalysisArtifact]:
+    query = (
+        select(AnalysisArtifact)
+        .where(AnalysisArtifact.job_id == job_id, AnalysisArtifact.artifact_type == "dynamic_artifact")
+        .order_by(AnalysisArtifact.created_at.asc(), AnalysisArtifact.id.asc())
     )
     return list(db.scalars(query).all())
 
 
 def list_reasoning(db: Any, job_id: str | None = None) -> list[AnalysisReasoning]:
-    query = select(AnalysisReasoning).order_by(AnalysisReasoning.created_at.desc())
+    query = select(AnalysisReasoning).order_by(AnalysisReasoning.created_at.asc(), AnalysisReasoning.id.asc())
     if job_id:
         query = query.where(AnalysisReasoning.job_id == job_id)
     return list(db.scalars(query).all())
+
+
+def count_findings(db: Any, job_id: str | None = None, severity: str | None = None) -> int:
+    query = select(func.count(AnalysisFinding.id))
+    if job_id:
+        query = query.where(AnalysisFinding.job_id == job_id)
+    if severity:
+        query = query.where(AnalysisFinding.severity == severity)
+    return int(db.scalar(query) or 0)
+
+
+def count_evidence(db: Any, job_id: str | None = None) -> int:
+    query = select(func.count(AnalysisEvidence.id))
+    if job_id:
+        query = query.where(AnalysisEvidence.job_id == job_id)
+    return int(db.scalar(query) or 0)
 
 
 def overview(db: Any) -> dict[str, int]:

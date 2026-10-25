@@ -6,6 +6,7 @@ export type AnalysisJob = {
   original_filename: string;
   file_size_bytes: number;
   sha256: string | null;
+  ghidra_enabled: boolean;
   status: JobStatus;
   progress: number;
   current_step: string;
