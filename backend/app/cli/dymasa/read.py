@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.db.base import (
     AnalysisArtifact,
@@ -123,6 +123,26 @@ def list_runtime_evidence(db: Any, job_id: str) -> list[AnalysisEvidence]:
         .order_by(AnalysisEvidence.created_at.asc())
     )
     return list(db.scalars(query).all())
+
+
+def list_reasoning(db: Any, job_id: str | None = None) -> list[AnalysisReasoning]:
+    query = select(AnalysisReasoning).order_by(AnalysisReasoning.created_at.desc())
+    if job_id:
+        query = query.where(AnalysisReasoning.job_id == job_id)
+    return list(db.scalars(query).all())
+
+
+def overview(db: Any) -> dict[str, int]:
+    rows = db.execute(select(AnalysisJob.status, func.count(AnalysisJob.id)).group_by(AnalysisJob.status)).all()
+    result = {"total": 0, "queued": 0, "running": 0, "completed": 0, "failed": 0, "cancelled": 0}
+    for status, count in rows:
+        key = getattr(status, "value", status)
+        result[key] = int(count)
+        result["total"] += int(count)
+    result["findings"] = int(db.scalar(select(func.count(AnalysisFinding.id))) or 0)
+    result["evidence"] = int(db.scalar(select(func.count(AnalysisEvidence.id))) or 0)
+    result["reports"] = int(db.scalar(select(func.count(AnalysisReport.id))) or 0)
+    return result
 
 
 def report_path(path: str, storage_root: Path) -> tuple[str, bool]:

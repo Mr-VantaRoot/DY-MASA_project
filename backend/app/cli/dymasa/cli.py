@@ -38,6 +38,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--quiet", action="store_true", help="Suppress the interactive banner.")
     parser.add_argument("--no-color", action="store_true", help="Disable terminal styling.")
     subparsers = parser.add_subparsers(dest="command")
+    subparsers.add_parser("overview", help="Show real job and result totals.")
     subparsers.add_parser("check", help="Check configuration and available dependencies.")
     analyze = subparsers.add_parser("analyze", help="Analyze one authorized APK and monitor its job.")
     analyze.add_argument("apk_path", type=Path)
@@ -52,6 +53,10 @@ def _parser() -> argparse.ArgumentParser:
     evidence.add_argument("--job-id")
     reports = subparsers.add_parser("reports", help="List stored reports.")
     reports.add_argument("--job-id")
+    reasoning = subparsers.add_parser("reasoning", help="Show deterministic reasoning summaries.")
+    reasoning.add_argument("--job-id")
+    subparsers.add_parser("health", help="Check the configured database and analysis tools.")
+    subparsers.add_parser("config", help="Show non-secret CLI configuration.")
     dynamic = subparsers.add_parser("dynamic", help="Inspect or start safe dynamic analysis.")
     dynamic_subparsers = dynamic.add_subparsers(dest="dynamic_command")
     dynamic_subparsers.add_parser("status", help="Show ADB/emulator status.")
@@ -120,6 +125,12 @@ def _read_command(args, output: Output) -> int:
     from . import read
 
     settings = get_settings()
+    if args.command == "overview":
+        totals = _with_session(read.overview)
+        output.print("Overview")
+        output.print("Jobs: " + ", ".join(f"{key}={value}" for key, value in totals.items() if key in {"total", "queued", "running", "completed", "failed", "cancelled"}))
+        output.print(f"Findings: {totals['findings']}  Evidence: {totals['evidence']}  Reports: {totals['reports']}")
+        return 0
     if args.command == "jobs":
         jobs = _with_session(read.list_jobs)
         if not jobs:
@@ -166,7 +177,48 @@ def _read_command(args, output: Output) -> int:
         if not reports:
             output.print("No reports found.")
         return 0
+    if args.command == "reasoning":
+        reasoning = _with_session(lambda db: read.list_reasoning(db, args.job_id))
+        for item in reasoning:
+            output.print(f"{item.id}  provider={item.provider}  job={item.job_id}\n{item.summary}")
+        if not reasoning:
+            output.print("No reasoning summaries found.")
+        return 0
     return 2
+
+
+def _health_command(output: Output) -> int:
+    from app.db.session import check_database
+    from app.core.config import get_settings
+    from app.services.tool_checker import ToolChecker
+
+    settings = get_settings()
+    try:
+        database_ok = check_database()
+    except Exception as exc:
+        database_ok = False
+        output.print(f"Database: unavailable ({exc})")
+    if database_ok:
+        output.print("Database: available")
+    tools_ok = True
+    for tool in ToolChecker(settings).check_all():
+        output.print(f"{tool.name}: {'available' if tool.available else 'unavailable'}{f' ({tool.error})' if tool.error else ''}")
+        tools_ok = tools_ok and tool.available
+    return 0 if database_ok and tools_ok else 1
+
+
+def _config_command(output: Output) -> int:
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    output.print(f"Project root: {Path(__file__).resolve().parents[4]}")
+    output.print(f"Storage root: {settings.storage_root}")
+    output.print(f"Upload limit: {settings.max_upload_bytes} bytes")
+    output.print(f"Analysis workers: {settings.max_concurrent_analysis_jobs}")
+    output.print(f"Dynamic device: {settings.dynamic_device_serial or 'automatic (emulator preferred)'}")
+    output.print(f"Physical device allowed: {settings.dynamic_allow_physical_device}")
+    output.print(f"Terminal enabled: {settings.enable_terminal}")
+    return 0
 
 
 def _dynamic_command(args, output: Output) -> int:
@@ -232,7 +284,7 @@ def interactive(output: Output) -> int:
     _banner(output)
     while True:
         output.print("\n1. Overview / Dashboard\n2. Scan APK\n3. Findings\n4. Evidence\n")
-        output.print("5. Reasoning\n6. Reports\n7. Jobs\n8. Dynamic Analysis\n9. Health / System Diagnostics\n0. Exit")
+        output.print("5. Reasoning\n6. Reports\n7. Jobs\n8. Dynamic Analysis\n9. Health / System Diagnostics\n10. Configuration\n0. Exit")
         try:
             choice = input("\nSelect an option: ").strip()
         except (EOFError, KeyboardInterrupt):
@@ -240,10 +292,28 @@ def interactive(output: Output) -> int:
             return 0
         if choice == "0":
             return 0
-        if choice == "9":
-            check(output)
+        if choice == "1":
+            main(["--quiet", "overview"])
+        elif choice == "3":
+            main(["--quiet", "findings"])
+        elif choice == "4":
+            main(["--quiet", "evidence"])
+        elif choice == "5":
+            main(["--quiet", "reasoning"])
+        elif choice == "6":
+            main(["--quiet", "reports"])
+        elif choice == "7":
+            main(["--quiet", "jobs"])
+        elif choice == "9":
+            main(["--quiet", "health"])
+        elif choice == "10":
+            main(["--quiet", "config"])
+        elif choice == "2":
+            output.print("Use the non-interactive command: dy-masa analyze /path/to/app.apk")
+        elif choice == "8":
+            output.print("Use the non-interactive command: dy-masa dynamic status")
         else:
-            output.print("This menu item will be enabled in a later CLI stage.")
+            output.print("Unknown menu option.")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -258,7 +328,7 @@ def main(argv: list[str] | None = None) -> int:
         from app.core.config import get_settings
 
         return run_analysis(args.apk_path, get_settings(), output, args.poll_interval)
-    if args.command in {"jobs", "job", "findings", "evidence", "reports"}:
+    if args.command in {"overview", "jobs", "job", "findings", "evidence", "reports", "reasoning"}:
         try:
             return _read_command(args, output)
         except ValueError as exc:
@@ -266,4 +336,12 @@ def main(argv: list[str] | None = None) -> int:
             return 1
     if args.command == "dynamic":
         return _dynamic_command(args, output)
+    if args.command == "health":
+        try:
+            return _health_command(output)
+        except Exception as exc:
+            output.print(f"Health check failed: {exc}")
+            return 1
+    if args.command == "config":
+        return _config_command(output)
     return interactive(output)
