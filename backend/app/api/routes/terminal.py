@@ -106,13 +106,21 @@ class LocalTerminal:
     def _validate_command_mode(self, command: str) -> None:
         """Reject programs that require an interactive TTY or run indefinitely."""
         try:
-            tokens = shlex.split(command, posix=True)
-        except ValueError:
-            return
-        operators = {";", "&&", "||", "|", "&"}
+            # Keep shell control operators separate so commands after ;, &&, ||,
+            # pipes, and background operators are validated as commands too.
+            lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|")
+            lexer.whitespace_split = True
+            tokens = list(lexer)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid shell syntax: {exc}",
+            ) from exc
         expecting_command = True
         for index, token in enumerate(tokens):
-            if token in operators:
+            # shlex can group repeated punctuation (for example, "&&" or "|||").
+            # Treat any token made entirely of control punctuation as an operator.
+            if token and all(char in ";&|" for char in token):
                 expecting_command = True
                 continue
             if not expecting_command:
