@@ -451,6 +451,26 @@ job stages while it runs and returns nonzero for invalid input, failed or
 cancelled jobs, missing reports, or database failures. It uses the existing
 atomic worker claim and does not manually run individual analysis stages.
 
+Non-interactive list commands return every matching persisted record by default
+(`findings`, `evidence`, `reports`, `reasoning`, and `jobs` with no page/limit
+restriction). Use `--page` and `--page-size` on `findings`, `evidence`, or
+`jobs` when bounded output is preferred; those options use stable database
+ordering and display the total and current range. Interactive screens use the
+same database queries with paging to keep terminal memory and output bounded,
+while still allowing every record to be reached.
+
+The web collection endpoints also preserve their legacy full-list response when
+no pagination parameters are supplied. For large collections, pass `page`
+(starting at 1) and `page_size` (1–1000) to `/api/jobs`,
+`/api/jobs/{job_id}/timeline`, `/api/jobs/{job_id}/artifacts`,
+`/api/jobs/{job_id}/evidence`, `/api/jobs/{job_id}/findings`,
+`/api/jobs/{job_id}/reasoning`, `/api/jobs/{job_id}/reports`,
+`/api/jobs/{job_id}/dynamic/events`, or
+`/api/jobs/{job_id}/dynamic/evidence`. Paginated responses retain the existing
+list field and add `total`, `page`, and `page_size`; findings also accept
+optional `severity`, `category`, and `search` filters. Existing web consumers
+omit these parameters and therefore retain complete selected-job data.
+
 The interactive CLI is started with no command and includes the same read-only
 views. Choose **History** to select one persisted scan, then open only that
 scan's overview, findings, evidence, reasoning, reports, job details, or

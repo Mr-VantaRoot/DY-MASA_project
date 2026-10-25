@@ -24,6 +24,9 @@ class AnalysisJobResponse(BaseModel):
 
 class AnalysisJobListResponse(BaseModel):
     jobs: list[AnalysisJobResponse]
+    total: int | None = None
+    page: int | None = None
+    page_size: int | None = None
 
 
 class AnalysisArtifactResponse(BaseModel):
@@ -40,6 +43,9 @@ class AnalysisArtifactResponse(BaseModel):
 
 class AnalysisArtifactListResponse(BaseModel):
     artifacts: list[AnalysisArtifactResponse]
+    total: int | None = None
+    page: int | None = None
+    page_size: int | None = None
 
 
 class AnalysisJobStageResponse(BaseModel):
@@ -56,6 +62,9 @@ class AnalysisJobStageResponse(BaseModel):
 
 class AnalysisJobStageListResponse(BaseModel):
     stages: list[AnalysisJobStageResponse]
+    total: int | None = None
+    page: int | None = None
+    page_size: int | None = None
 
 
 class AnalysisEvidenceResponse(BaseModel):
@@ -74,6 +83,9 @@ class AnalysisEvidenceResponse(BaseModel):
 
 class AnalysisEvidenceListResponse(BaseModel):
     evidence: list[AnalysisEvidenceResponse]
+    total: int | None = None
+    page: int | None = None
+    page_size: int | None = None
 
 
 class AnalysisFindingResponse(BaseModel):
@@ -93,6 +105,9 @@ class AnalysisFindingResponse(BaseModel):
 
 class AnalysisFindingListResponse(BaseModel):
     findings: list[AnalysisFindingResponse]
+    total: int | None = None
+    page: int | None = None
+    page_size: int | None = None
 
 
 class AnalysisReasoningResponse(BaseModel):
@@ -109,6 +124,9 @@ class AnalysisReasoningResponse(BaseModel):
 
 class AnalysisReasoningListResponse(BaseModel):
     reasoning: list[AnalysisReasoningResponse]
+    total: int | None = None
+    page: int | None = None
+    page_size: int | None = None
 
 
 class AnalysisReportResponse(BaseModel):
@@ -123,3 +141,6 @@ class AnalysisReportResponse(BaseModel):
 
 class AnalysisReportListResponse(BaseModel):
     reports: list[AnalysisReportResponse]
+    total: int | None = None
+    page: int | None = None
+    page_size: int | None = None

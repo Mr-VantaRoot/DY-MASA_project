@@ -53,7 +53,7 @@ class TerminalUI:
                 from rich.text import Text
 
                 body = Text(body)
-            self.print(Panel(body, title=title, border_style=style, padding=(1, 2)))
+            self.print(Panel(body, title=title, border_style=style, padding=(0, 1), expand=False))
         else:
             plain_body = re.sub(r"\[/?[^\]]+\]", "", str(body))
             if self.ansi:
@@ -64,9 +64,23 @@ class TerminalUI:
                 self.print(f"\n=== {title} ===\n{plain_body}\n")
 
     def table(self, title: str, columns: Iterable[str], rows: Iterable[Iterable[object]]) -> None:
+        columns = tuple(str(column) for column in columns)
         rows = list(rows)
         if self.console and Table:
-            table = Table(title=title, header_style="bold cyan", border_style="bright_blue", expand=True, show_lines=False)
+            # Narrow terminals cannot render a dense grid legibly. Keep every
+            # value available, but use wrapped, labelled rows instead of
+            # allowing Rich to split column headings into unreadable fragments.
+            if self.console.size.width < 80:
+                self.screen(title, "compact view")
+                for row in rows:
+                    values = list(row)
+                    self.print(" · ".join(
+                        f"{column}: {value}" for column, value in zip(columns, values)
+                    ))
+                if not rows:
+                    self.empty("No records match the current view.")
+                return
+            table = Table(title=title, header_style="bold cyan", border_style="bright_blue", expand=False, show_lines=False, padding=(0, 1))
             for column in columns:
                 table.add_column(column, overflow="fold")
             for row in rows:
@@ -121,6 +135,39 @@ class TerminalUI:
             self.print(Text(value, style="dim cyan"))
         else:
             self.print(value)
+
+    def screen(self, title: str, subtitle: str | None = None) -> None:
+        """Render a compact, consistent screen heading."""
+
+        if self.console:
+            from rich.text import Text
+
+            heading = Text(title.upper(), style="bold bright_cyan")
+            if subtitle:
+                heading.append(f"  {subtitle}", style="dim")
+            self.print(heading)
+            self.print(Text("─" * min(72, max(24, len(title) + (len(subtitle or "") + 2))), style="dim cyan"))
+        else:
+            self.print(f"{title.upper()}  {subtitle or ''}".rstrip())
+            self.print("-" * min(72, max(24, len(title) + len(subtitle or "") + 2)))
+
+    def empty(self, message: str, action: str | None = None) -> None:
+        self.status_line(f"○ {message}")
+        if action:
+            self.print(f"  next  {action}")
+
+    def notice(self, message: str, kind: str = "info") -> None:
+        styles = {"success": "green", "warning": "yellow", "error": "red", "info": "cyan"}
+        if self.console:
+            from rich.text import Text
+
+            self.print(Text(message, style=styles.get(kind, "cyan")))
+        else:
+            self.print(f"[{kind.upper()}] {message}")
+
+    def footer(self, *shortcuts: str) -> None:
+        if shortcuts:
+            self.status_line("  ".join(shortcuts))
 
     def severity(self, value: object) -> object:
         text = getattr(value, "value", value)

@@ -6,7 +6,7 @@ type AttackPath = { title: string; steps: string[]; evidence_ids: string[] };
 
 export function ReasoningPage() {
   const jobState = useJobStateContext();
-  const { reasoning } = jobState;
+  const { reasoning, reasoningRecords } = jobState;
 
   let attackPaths: AttackPath[] = [];
   if (reasoning) {
@@ -31,6 +31,11 @@ export function ReasoningPage() {
             <h3 className="text-xl font-bold text-foreground">
               {reasoning ? reasoning.provider : "Awaiting analysis"}
             </h3>
+            {reasoningRecords.length > 0 && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Showing latest of {reasoningRecords.length} persisted reasoning record{reasoningRecords.length === 1 ? "" : "s"}.
+              </p>
+            )}
           </div>
           <BrainCircuit className="text-accent" size={28} />
         </div>

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
@@ -11,6 +11,7 @@ from app.schemas.jobs import AnalysisEvidenceListResponse, AnalysisEvidenceRespo
 from app.services.job_events import emit_job_event
 from app.services.job_service import JobService, submit_dynamic_job
 from app.services.dynamic_service import DynamicStartError, start_dynamic_run
+from app.api.routes.jobs import _paged
 from dynamic.emulator.manager import EmulatorManager, EmulatorStatus
 from dynamic.runtime.orchestrator import DynamicAnalysisError, DynamicRuntimeOrchestrator
 
@@ -122,27 +123,45 @@ def start_dynamic_analysis(
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
-@router.get("/jobs/{job_id}/dynamic/events", response_model=AnalysisJobStageListResponse)
-def list_dynamic_events(job_id: str, db: Session = Depends(get_db), settings: Settings = Depends(get_settings)) -> AnalysisJobStageListResponse:
+@router.get("/jobs/{job_id}/dynamic/events", response_model=AnalysisJobStageListResponse, response_model_exclude_none=True)
+def list_dynamic_events(
+    job_id: str,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    page: int | None = Query(default=None, ge=1),
+    page_size: int | None = Query(default=None, ge=1, le=1000),
+) -> AnalysisJobStageListResponse:
     if JobService(db, settings).get_job(job_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis job not found.")
     stages = (
         db.query(AnalysisJobStage)
         .filter(AnalysisJobStage.job_id == job_id, AnalysisJobStage.stage.like("dynamic_%"))
-        .order_by(AnalysisJobStage.created_at.asc())
-        .all()
+        .order_by(AnalysisJobStage.created_at.asc(), AnalysisJobStage.id.asc())
     )
-    return AnalysisJobStageListResponse(stages=[AnalysisJobStageResponse.model_validate(stage) for stage in stages])
+    stages, metadata = _paged(stages, page, page_size)
+    response = AnalysisJobStageListResponse(stages=[AnalysisJobStageResponse.model_validate(stage) for stage in stages])
+    if metadata:
+        response.total, response.page, response.page_size = metadata
+    return response
 
 
-@router.get("/jobs/{job_id}/dynamic/evidence", response_model=AnalysisEvidenceListResponse)
-def list_dynamic_evidence(job_id: str, db: Session = Depends(get_db), settings: Settings = Depends(get_settings)) -> AnalysisEvidenceListResponse:
+@router.get("/jobs/{job_id}/dynamic/evidence", response_model=AnalysisEvidenceListResponse, response_model_exclude_none=True)
+def list_dynamic_evidence(
+    job_id: str,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    page: int | None = Query(default=None, ge=1),
+    page_size: int | None = Query(default=None, ge=1, le=1000),
+) -> AnalysisEvidenceListResponse:
     if JobService(db, settings).get_job(job_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis job not found.")
     evidence = (
         db.query(AnalysisEvidence)
         .filter(AnalysisEvidence.job_id == job_id, AnalysisEvidence.category == EvidenceCategory.runtime)
-        .order_by(AnalysisEvidence.created_at.asc())
-        .all()
+        .order_by(AnalysisEvidence.created_at.asc(), AnalysisEvidence.id.asc())
     )
-    return AnalysisEvidenceListResponse(evidence=[AnalysisEvidenceResponse.model_validate(item) for item in evidence])
+    evidence, metadata = _paged(evidence, page, page_size)
+    response = AnalysisEvidenceListResponse(evidence=[AnalysisEvidenceResponse.model_validate(item) for item in evidence])
+    if metadata:
+        response.total, response.page, response.page_size = metadata
+    return response

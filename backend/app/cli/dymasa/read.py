@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 
 from app.db.base import (
     AnalysisArtifact,
@@ -18,11 +18,44 @@ from app.db.base import (
 )
 
 
-def list_jobs(db: Any, limit: int | None = None) -> list[AnalysisJob]:
+SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+
+
+def normalize_severity(value: str | None) -> str | None:
+    if value is None or not value.strip():
+        return None
+    normalized = value.strip().lower()
+    if normalized not in SEVERITY_ORDER:
+        raise ValueError("Severity must be one of: critical, high, medium, low, info.")
+    return normalized
+
+
+def list_jobs(db: Any, limit: int | None = None, offset: int = 0, search: str | None = None, status: str | None = None) -> list[AnalysisJob]:
     query = select(AnalysisJob).order_by(AnalysisJob.created_at.desc(), AnalysisJob.id.desc())
+    if search:
+        query = query.where(AnalysisJob.original_filename.ilike(f"%{search.strip()}%"))
+    if status:
+        normalized_status = status.strip().lower()
+        if normalized_status not in {"queued", "running", "completed", "failed", "cancelled"}:
+            raise ValueError("Status must be queued, running, completed, failed, or cancelled.")
+        query = query.where(AnalysisJob.status == normalized_status)
+    if offset:
+        query = query.offset(offset)
     if limit is not None:
         query = query.limit(limit)
     return list(db.scalars(query).all())
+
+
+def count_jobs(db: Any, search: str | None = None, status: str | None = None) -> int:
+    query = select(func.count(AnalysisJob.id))
+    if search:
+        query = query.where(AnalysisJob.original_filename.ilike(f"%{search.strip()}%"))
+    if status:
+        normalized_status = status.strip().lower()
+        if normalized_status not in {"queued", "running", "completed", "failed", "cancelled"}:
+            raise ValueError("Status must be queued, running, completed, failed, or cancelled.")
+        query = query.where(AnalysisJob.status == normalized_status)
+    return int(db.scalar(query) or 0)
 
 
 def get_job(db: Any, job_id: str) -> AnalysisJob:
@@ -87,19 +120,50 @@ def job_details(db: Any, job_id: str) -> dict[str, Any]:
     }
 
 
-def list_findings(db: Any, job_id: str | None = None, severity: str | None = None) -> list[AnalysisFinding]:
-    query = select(AnalysisFinding).order_by(AnalysisFinding.severity.desc(), AnalysisFinding.created_at.asc(), AnalysisFinding.id.asc())
+def list_findings(db: Any, job_id: str | None = None, severity: str | None = None, offset: int = 0, limit: int | None = None, search: str | None = None, category: str | None = None) -> list[AnalysisFinding]:
+    normalized = normalize_severity(severity)
+    severity_rank = case(SEVERITY_ORDER, value=AnalysisFinding.severity, else_=99)
+    query = select(AnalysisFinding).order_by(severity_rank.asc(), AnalysisFinding.created_at.asc(), AnalysisFinding.id.asc())
     if job_id:
         query = query.where(AnalysisFinding.job_id == job_id)
-    if severity:
-        query = query.where(AnalysisFinding.severity == severity)
+    if normalized:
+        query = query.where(AnalysisFinding.severity == normalized)
+    if search:
+        pattern = f"%{search.strip()}%"
+        query = query.where(
+            AnalysisFinding.title.ilike(pattern)
+            | AnalysisFinding.category.ilike(pattern)
+            | AnalysisFinding.rule_id.ilike(pattern)
+        )
+    if category:
+        query = query.where(AnalysisFinding.category.ilike(category.strip()))
+    if offset:
+        query = query.offset(offset)
+    if limit is not None:
+        query = query.limit(limit)
     return list(db.scalars(query).all())
 
 
-def list_evidence(db: Any, job_id: str | None = None) -> list[AnalysisEvidence]:
+def list_evidence(
+    db: Any,
+    job_id: str | None = None,
+    offset: int = 0,
+    limit: int | None = None,
+    search: str | None = None,
+    category: str | None = None,
+) -> list[AnalysisEvidence]:
     query = select(AnalysisEvidence).order_by(AnalysisEvidence.category.asc(), AnalysisEvidence.created_at.asc(), AnalysisEvidence.id.asc())
     if job_id:
         query = query.where(AnalysisEvidence.job_id == job_id)
+    if search:
+        pattern = f"%{search.strip()}%"
+        query = query.where(AnalysisEvidence.label.ilike(pattern) | AnalysisEvidence.value_json.ilike(pattern))
+    if category:
+        query = query.where(AnalysisEvidence.category == category.strip().lower())
+    if offset:
+        query = query.offset(offset)
+    if limit is not None:
+        query = query.limit(limit)
     return list(db.scalars(query).all())
 
 
@@ -119,16 +183,19 @@ def list_dynamic_stages(db: Any, job_id: str) -> list[AnalysisJobStage]:
     return list(db.scalars(query).all())
 
 
-def list_runtime_evidence(db: Any, job_id: str) -> list[AnalysisEvidence]:
+def list_runtime_evidence(db: Any, job_id: str, offset: int = 0, limit: int | None = None) -> list[AnalysisEvidence]:
     query = (
         select(AnalysisEvidence)
         .where(
             AnalysisEvidence.job_id == job_id,
             AnalysisEvidence.category == "runtime",
-            AnalysisEvidence.evidence_type.like("dynamic_%"),
         )
         .order_by(AnalysisEvidence.created_at.asc(), AnalysisEvidence.id.asc())
     )
+    if offset:
+        query = query.offset(offset)
+    if limit is not None:
+        query = query.limit(limit)
     return list(db.scalars(query).all())
 
 
@@ -148,13 +215,41 @@ def dynamic_result_message(db: Any, job_id: str, kind: str) -> str | None:
     return messages[kind]
 
 
-def list_runtime_artifacts(db: Any, job_id: str) -> list[AnalysisArtifact]:
+def list_runtime_artifacts(db: Any, job_id: str, offset: int = 0, limit: int | None = None) -> list[AnalysisArtifact]:
     query = (
         select(AnalysisArtifact)
         .where(AnalysisArtifact.job_id == job_id, AnalysisArtifact.artifact_type == "dynamic_artifact")
         .order_by(AnalysisArtifact.created_at.asc(), AnalysisArtifact.id.asc())
     )
+    if offset:
+        query = query.offset(offset)
+    if limit is not None:
+        query = query.limit(limit)
     return list(db.scalars(query).all())
+
+
+def count_runtime_evidence(db: Any, job_id: str) -> int:
+    return int(
+        db.scalar(
+            select(func.count(AnalysisEvidence.id)).where(
+                AnalysisEvidence.job_id == job_id,
+                AnalysisEvidence.category == "runtime",
+            )
+        )
+        or 0
+    )
+
+
+def count_runtime_artifacts(db: Any, job_id: str) -> int:
+    return int(
+        db.scalar(
+            select(func.count(AnalysisArtifact.id)).where(
+                AnalysisArtifact.job_id == job_id,
+                AnalysisArtifact.artifact_type == "dynamic_artifact",
+            )
+        )
+        or 0
+    )
 
 
 def list_reasoning(db: Any, job_id: str | None = None) -> list[AnalysisReasoning]:
@@ -164,19 +259,34 @@ def list_reasoning(db: Any, job_id: str | None = None) -> list[AnalysisReasoning
     return list(db.scalars(query).all())
 
 
-def count_findings(db: Any, job_id: str | None = None, severity: str | None = None) -> int:
+def count_findings(db: Any, job_id: str | None = None, severity: str | None = None, search: str | None = None, category: str | None = None) -> int:
+    normalized = normalize_severity(severity)
     query = select(func.count(AnalysisFinding.id))
     if job_id:
         query = query.where(AnalysisFinding.job_id == job_id)
-    if severity:
-        query = query.where(AnalysisFinding.severity == severity)
+    if normalized:
+        query = query.where(AnalysisFinding.severity == normalized)
+    if search:
+        pattern = f"%{search.strip()}%"
+        query = query.where(
+            AnalysisFinding.title.ilike(pattern)
+            | AnalysisFinding.category.ilike(pattern)
+            | AnalysisFinding.rule_id.ilike(pattern)
+        )
+    if category:
+        query = query.where(AnalysisFinding.category.ilike(category.strip()))
     return int(db.scalar(query) or 0)
 
 
-def count_evidence(db: Any, job_id: str | None = None) -> int:
+def count_evidence(db: Any, job_id: str | None = None, search: str | None = None, category: str | None = None) -> int:
     query = select(func.count(AnalysisEvidence.id))
     if job_id:
         query = query.where(AnalysisEvidence.job_id == job_id)
+    if search:
+        pattern = f"%{search.strip()}%"
+        query = query.where(AnalysisEvidence.label.ilike(pattern) | AnalysisEvidence.value_json.ilike(pattern))
+    if category:
+        query = query.where(AnalysisEvidence.category == category.strip().lower())
     return int(db.scalar(query) or 0)
 
 

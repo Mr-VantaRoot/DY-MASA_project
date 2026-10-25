@@ -4,7 +4,7 @@ import time
 from dataclasses import replace
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import select
@@ -45,6 +45,29 @@ from app.services.job_service import JobService, submit_analysis_job
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 TERMINAL_EVENT_STAGES = frozenset({"job_completed", "job_failed", "job_cancelled"})
 TERMINAL_EVENT_GRACE_SECONDS = 2.0
+
+
+def _page_args(page: int | None, page_size: int | None) -> tuple[int, int] | None:
+    """Return validated pagination values, or None for legacy unpaged responses."""
+    # Direct Python callers (including lightweight service tests) see FastAPI's
+    # Query sentinel when they omit a dependency-injected argument.
+    if not isinstance(page, int):
+        page = None
+    if not isinstance(page_size, int):
+        page_size = None
+    if page is None and page_size is None:
+        return None
+    return page or 1, page_size or 100
+
+
+def _paged(query, page: int | None, page_size: int | None):
+    paging = _page_args(page, page_size)
+    if paging is None:
+        return query.all(), None
+    current_page, current_size = paging
+    total = query.order_by(None).count()
+    rows = query.offset((current_page - 1) * current_size).limit(current_size).all()
+    return rows, (total, current_page, current_size)
 
 
 def _resolve_storage_file(path: Path, storage_root: Path, resource_name: str) -> Path:
@@ -140,13 +163,19 @@ def upload_apk(
     return AnalysisJobResponse.model_validate(job)
 
 
-@router.get("", response_model=AnalysisJobListResponse)
+@router.get("", response_model=AnalysisJobListResponse, response_model_exclude_none=True)
 def list_jobs(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    page: int | None = Query(default=None, ge=1),
+    page_size: int | None = Query(default=None, ge=1, le=1000),
 ) -> AnalysisJobListResponse:
-    jobs = JobService(db, settings).list_jobs()
-    return AnalysisJobListResponse(jobs=[AnalysisJobResponse.model_validate(job) for job in jobs])
+    query = db.query(AnalysisJob).order_by(AnalysisJob.created_at.desc(), AnalysisJob.id.desc())
+    jobs, metadata = _paged(query, page, page_size)
+    response = AnalysisJobListResponse(jobs=[AnalysisJobResponse.model_validate(job) for job in jobs])
+    if metadata:
+        response.total, response.page, response.page_size = metadata
+    return response
 
 
 @router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -170,11 +199,13 @@ def get_job(
     return AnalysisJobResponse.model_validate(job)
 
 
-@router.get("/{job_id}/timeline", response_model=AnalysisJobStageListResponse)
+@router.get("/{job_id}/timeline", response_model=AnalysisJobStageListResponse, response_model_exclude_none=True)
 def list_job_timeline(
     job_id: str,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    page: int | None = Query(default=None, ge=1),
+    page_size: int | None = Query(default=None, ge=1, le=1000),
 ) -> AnalysisJobStageListResponse:
     job = JobService(db, settings).get_job(job_id)
     if job is None:
@@ -183,12 +214,15 @@ def list_job_timeline(
     stages = (
         db.query(AnalysisJobStage)
         .filter(AnalysisJobStage.job_id == job_id)
-        .order_by(AnalysisJobStage.created_at.asc())
-        .all()
+        .order_by(AnalysisJobStage.created_at.asc(), AnalysisJobStage.id.asc())
     )
-    return AnalysisJobStageListResponse(
+    stages, metadata = _paged(stages, page, page_size)
+    response = AnalysisJobStageListResponse(
         stages=[AnalysisJobStageResponse.model_validate(stage) for stage in stages]
     )
+    if metadata:
+        response.total, response.page, response.page_size = metadata
+    return response
 
 
 @router.get("/{job_id}/events")
@@ -253,11 +287,13 @@ def stream_job_events(
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
-@router.get("/{job_id}/artifacts", response_model=AnalysisArtifactListResponse)
+@router.get("/{job_id}/artifacts", response_model=AnalysisArtifactListResponse, response_model_exclude_none=True)
 def list_job_artifacts(
     job_id: str,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    page: int | None = Query(default=None, ge=1),
+    page_size: int | None = Query(default=None, ge=1, le=1000),
 ) -> AnalysisArtifactListResponse:
     job = JobService(db, settings).get_job(job_id)
     if job is None:
@@ -266,12 +302,15 @@ def list_job_artifacts(
     artifacts = (
         db.query(AnalysisArtifact)
         .filter(AnalysisArtifact.job_id == job_id)
-        .order_by(AnalysisArtifact.created_at.asc())
-        .all()
+        .order_by(AnalysisArtifact.created_at.asc(), AnalysisArtifact.id.asc())
     )
-    return AnalysisArtifactListResponse(
+    artifacts, metadata = _paged(artifacts, page, page_size)
+    response = AnalysisArtifactListResponse(
         artifacts=[AnalysisArtifactResponse.model_validate(artifact) for artifact in artifacts]
     )
+    if metadata:
+        response.total, response.page, response.page_size = metadata
+    return response
 
 
 @router.get("/{job_id}/artifacts/{artifact_id}/view")
@@ -306,11 +345,13 @@ def view_job_artifact(
     return FileResponse(resolved_path, media_type=media_types.get(resolved_path.suffix.lower(), "application/octet-stream"))
 
 
-@router.get("/{job_id}/evidence", response_model=AnalysisEvidenceListResponse)
+@router.get("/{job_id}/evidence", response_model=AnalysisEvidenceListResponse, response_model_exclude_none=True)
 def list_job_evidence(
     job_id: str,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    page: int | None = Query(default=None, ge=1),
+    page_size: int | None = Query(default=None, ge=1, le=1000),
 ) -> AnalysisEvidenceListResponse:
     job = JobService(db, settings).get_job(job_id)
     if job is None:
@@ -319,19 +360,27 @@ def list_job_evidence(
     evidence = (
         db.query(AnalysisEvidence)
         .filter(AnalysisEvidence.job_id == job_id)
-        .order_by(AnalysisEvidence.category.asc(), AnalysisEvidence.created_at.asc())
-        .all()
+        .order_by(AnalysisEvidence.category.asc(), AnalysisEvidence.created_at.asc(), AnalysisEvidence.id.asc())
     )
-    return AnalysisEvidenceListResponse(
+    evidence, metadata = _paged(evidence, page, page_size)
+    response = AnalysisEvidenceListResponse(
         evidence=[AnalysisEvidenceResponse.model_validate(item) for item in evidence]
     )
+    if metadata:
+        response.total, response.page, response.page_size = metadata
+    return response
 
 
-@router.get("/{job_id}/findings", response_model=AnalysisFindingListResponse)
+@router.get("/{job_id}/findings", response_model=AnalysisFindingListResponse, response_model_exclude_none=True)
 def list_job_findings(
     job_id: str,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    page: int | None = Query(default=None, ge=1),
+    page_size: int | None = Query(default=None, ge=1, le=1000),
+    severity: str | None = None,
+    category: str | None = None,
+    search: str | None = None,
 ) -> AnalysisFindingListResponse:
     job = JobService(db, settings).get_job(job_id)
     if job is None:
@@ -340,19 +389,31 @@ def list_job_findings(
     findings = (
         db.query(AnalysisFinding)
         .filter(AnalysisFinding.job_id == job_id)
-        .order_by(AnalysisFinding.severity.desc(), AnalysisFinding.created_at.asc())
-        .all()
+        .order_by(AnalysisFinding.severity.desc(), AnalysisFinding.created_at.asc(), AnalysisFinding.id.asc())
     )
-    return AnalysisFindingListResponse(
+    if severity:
+        findings = findings.filter(AnalysisFinding.severity == severity.lower())
+    if category:
+        findings = findings.filter(AnalysisFinding.category == category)
+    if search:
+        term = f"%{search.strip()}%"
+        findings = findings.filter((AnalysisFinding.title.ilike(term)) | (AnalysisFinding.rule_id.ilike(term)))
+    findings, metadata = _paged(findings, page, page_size)
+    response = AnalysisFindingListResponse(
         findings=[AnalysisFindingResponse.model_validate(finding) for finding in findings]
     )
+    if metadata:
+        response.total, response.page, response.page_size = metadata
+    return response
 
 
-@router.get("/{job_id}/reasoning", response_model=AnalysisReasoningListResponse)
+@router.get("/{job_id}/reasoning", response_model=AnalysisReasoningListResponse, response_model_exclude_none=True)
 def list_job_reasoning(
     job_id: str,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    page: int | None = Query(default=None, ge=1),
+    page_size: int | None = Query(default=None, ge=1, le=1000),
 ) -> AnalysisReasoningListResponse:
     job = JobService(db, settings).get_job(job_id)
     if job is None:
@@ -361,19 +422,24 @@ def list_job_reasoning(
     reasoning = (
         db.query(AnalysisReasoning)
         .filter(AnalysisReasoning.job_id == job_id)
-        .order_by(AnalysisReasoning.created_at.asc())
-        .all()
+        .order_by(AnalysisReasoning.created_at.asc(), AnalysisReasoning.id.asc())
     )
-    return AnalysisReasoningListResponse(
+    reasoning, metadata = _paged(reasoning, page, page_size)
+    response = AnalysisReasoningListResponse(
         reasoning=[AnalysisReasoningResponse.model_validate(item) for item in reasoning]
     )
+    if metadata:
+        response.total, response.page, response.page_size = metadata
+    return response
 
 
-@router.get("/{job_id}/reports", response_model=AnalysisReportListResponse)
+@router.get("/{job_id}/reports", response_model=AnalysisReportListResponse, response_model_exclude_none=True)
 def list_job_reports(
     job_id: str,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    page: int | None = Query(default=None, ge=1),
+    page_size: int | None = Query(default=None, ge=1, le=1000),
 ) -> AnalysisReportListResponse:
     job = JobService(db, settings).get_job(job_id)
     if job is None:
@@ -382,12 +448,15 @@ def list_job_reports(
     reports = (
         db.query(AnalysisReport)
         .filter(AnalysisReport.job_id == job_id)
-        .order_by(AnalysisReport.created_at.desc())
-        .all()
+        .order_by(AnalysisReport.created_at.desc(), AnalysisReport.id.desc())
     )
-    return AnalysisReportListResponse(
+    reports, metadata = _paged(reports, page, page_size)
+    response = AnalysisReportListResponse(
         reports=[AnalysisReportResponse.model_validate(report) for report in reports]
     )
+    if metadata:
+        response.total, response.page, response.page_size = metadata
+    return response
 
 
 @router.get("/{job_id}/reports/{report_id}/download")
