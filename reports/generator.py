@@ -348,6 +348,11 @@ class HtmlReportGenerator:
 
 
 class PdfReportGenerator:
+    @staticmethod
+    def _safe_text(value: object) -> str:
+        """Render APK/database text literally instead of as ReportLab markup."""
+        return escape(str(value), quote=True)
+
     def generate(
         self,
         job: AnalysisJob,
@@ -398,7 +403,7 @@ class PdfReportGenerator:
         )
         story: list[object] = [
             Paragraph("MASA Report", title),
-            Paragraph(f"Generated {datetime.utcnow().isoformat()} UTC", body),
+            Paragraph(self._safe_text(f"Generated {datetime.utcnow().isoformat()} UTC"), body),
             Spacer(1, 0.2 * inch),
             Paragraph("Assessment Target", heading),
             self._table(
@@ -412,8 +417,10 @@ class PdfReportGenerator:
             Spacer(1, 0.2 * inch),
             Paragraph("Scope and Limitations", heading),
             Paragraph(
-                "This is an automated assessment of APK-derived evidence, not a complete manual mobile penetration test. "
-                + runtime_scope + " Manifest findings indicate exposed attack surface, and code/string findings require manual validation.",
+                self._safe_text(
+                    "This is an automated assessment of APK-derived evidence, not a complete manual mobile penetration test. "
+                    + runtime_scope + " Manifest findings indicate exposed attack surface, and code/string findings require manual validation."
+                ),
                 body,
             ),
             Spacer(1, 0.2 * inch),
@@ -421,7 +428,7 @@ class PdfReportGenerator:
             *self._runtime_limitations_story(evidence, body),
             Spacer(1, 0.2 * inch),
             Paragraph("Executive Summary", heading),
-            Paragraph(self._executive_summary_text(findings, latest_reasoning), body),
+            Paragraph(self._safe_text(self._executive_summary_text(findings, latest_reasoning)), body),
             Spacer(1, 0.2 * inch),
             Paragraph("Key Findings", heading),
             *self._key_findings_story(findings, body),
@@ -468,7 +475,7 @@ class PdfReportGenerator:
         if not important:
             return [Paragraph("No high or medium severity findings were generated.", body)]
         return [
-            Paragraph(f"{finding.severity.value.upper()} - {finding.title}", body)
+            Paragraph(PdfReportGenerator._safe_text(f"{finding.severity.value.upper()} - {finding.title}"), body)
             for finding in important[:8]
         ]
 
@@ -488,7 +495,7 @@ class PdfReportGenerator:
                 action = "Search for HTTP endpoints and test whether sensitive traffic can use cleartext transport."
             else:
                 action = "Review linked evidence manually and confirm exploitability before treating it as confirmed."
-            actions.append(Paragraph(f"{finding.title}: {action}", body))
+            actions.append(Paragraph(PdfReportGenerator._safe_text(f"{finding.title}: {action}"), body))
         return actions
 
     def _finding_story(
@@ -505,11 +512,11 @@ class PdfReportGenerator:
             label = evidence.label if evidence else evidence_id
             evidence_lines.append(f"{evidence_id} - {label}")
         story = [
-            Paragraph(finding.title, styles["Heading3"]),
-            Paragraph(f"Severity: {finding.severity.value.upper()} | Category: {finding.category}", styles["BodyText"]),
-            Paragraph(finding.description, styles["BodyText"]),
-            Paragraph(f"Remediation: {finding.remediation}", styles["BodyText"]),
-            Paragraph("Evidence: " + "; ".join(evidence_lines), code),
+            Paragraph(self._safe_text(finding.title), styles["Heading3"]),
+            Paragraph(self._safe_text(f"Severity: {finding.severity.value.upper()} | Category: {finding.category}"), styles["BodyText"]),
+            Paragraph(self._safe_text(finding.description), styles["BodyText"]),
+            Paragraph(self._safe_text(f"Remediation: {finding.remediation}"), styles["BodyText"]),
+            Paragraph(self._safe_text("Evidence: " + "; ".join(evidence_lines)), code),
             Spacer(1, 0.12 * inch),
         ]
         validations = []
@@ -527,7 +534,10 @@ class PdfReportGenerator:
             for validation in validations:
                 story.append(
                     Paragraph(
-                        f"{str(validation.get('result', 'potential')).upper()} - {validation.get('action', 'Runtime validation')}: {validation.get('detail', '')}",
+                        PdfReportGenerator._safe_text(
+                            f"{str(validation.get('result', 'potential')).upper()} - "
+                            f"{validation.get('action', 'Runtime validation')}: {validation.get('detail', '')}"
+                        ),
                         styles["BodyText"],
                     )
                 )
@@ -540,12 +550,12 @@ class PdfReportGenerator:
         if reasoning is None:
             return [Paragraph("No reasoning generated.", body)]
         story: list[object] = [
-            Paragraph(f"Provider: {reasoning.provider}", body),
-            Paragraph(reasoning.limitations, body),
+            Paragraph(PdfReportGenerator._safe_text(f"Provider: {reasoning.provider}"), body),
+            Paragraph(PdfReportGenerator._safe_text(reasoning.limitations), body),
         ]
         for attack_path in json.loads(reasoning.attack_paths_json):
             steps = " ".join(str(step) for step in attack_path.get("steps", []))
-            story.append(Paragraph(f"{attack_path.get('title', 'Attack path')}: {steps}", body))
+            story.append(Paragraph(PdfReportGenerator._safe_text(f"{attack_path.get('title', 'Attack path')}: {steps}"), body))
         return story
 
     def _runtime_evidence_story(
@@ -578,7 +588,7 @@ class PdfReportGenerator:
                         noteworthy = {key: value for key, value in values.items() if key not in {"max_file_bytes", "max_evidence_per_rule"} and value not in (0, False, [], {})}
                         if noteworthy:
                             details.append(f"{name}: {json.dumps(noteworthy, sort_keys=True)}")
-            limits_note = [Paragraph("Extraction coverage: " + escape("; ".join(details) or "no limits reached") + ".", body)]
+            limits_note = [Paragraph(PdfReportGenerator._safe_text("Extraction coverage: " + ("; ".join(details) if details else "no limits reached") + "."), body)]
         return [
             Spacer(1, 0.2 * inch),
             Paragraph("DY-MASA Runtime Evidence", heading),
@@ -610,7 +620,10 @@ class PdfReportGenerator:
             except json.JSONDecodeError:
                 payload = {}
             story.append(Paragraph(
-                f"{str(payload.get('result', 'potential')).upper()} - {payload.get('action', item.label)}; crashes: {len(payload.get('crash_events') or [])}; log: {payload.get('step_log_path', 'not recorded')}",
+                PdfReportGenerator._safe_text(
+                    f"{str(payload.get('result', 'potential')).upper()} - {payload.get('action', item.label)}; "
+                    f"crashes: {len(payload.get('crash_events') or [])}; log: {payload.get('step_log_path', 'not recorded')}"
+                ),
                 body,
             ))
         story.append(Paragraph("Not checked: network traffic, file contents, how the app handles input, and native code behavior at runtime.", body))
@@ -637,6 +650,7 @@ class PdfReportGenerator:
 
     @staticmethod
     def _table(rows: list[list[str]]) -> Table:
+        rows = [[escape(str(cell), quote=True) for cell in row] for row in rows]
         table = Table(rows, repeatRows=1)
         table.setStyle(
             TableStyle(

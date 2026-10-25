@@ -9,6 +9,7 @@ import unittest
 from analysis.code_risk import CodeRiskEvidenceExtractor
 from analysis.evidence import ManifestEvidenceExtractor
 from analysis.findings import EvidenceFindingGenerator
+from reports.generator import PdfReportGenerator
 
 
 class DetectionAccuracyTests(unittest.TestCase):
@@ -105,7 +106,9 @@ class DetectionAccuracyTests(unittest.TestCase):
         self.assertIsNone(flags["uses_cleartext_traffic_effective"])
         self.assertEqual(flags["network_security_policy"]["status"], "mixed")
         links = next(item for item in evidence if item.evidence_type == "deep_link")
-        self.assertEqual(len(links.value["routes"]), 2)
+        # Android merges the two data elements, so both schemes can match
+        # both hosts; the declarations are not element-local pairs.
+        self.assertEqual(len(links.value["routes"]), 4)
         self.assertEqual(links.value["scope"], "explicit_scheme_host")
         findings = EvidenceFindingGenerator().generate([
             SimpleNamespace(
@@ -120,6 +123,62 @@ class DetectionAccuracyTests(unittest.TestCase):
         self.assertTrue(any(finding.rule_id == "android-cleartext-policy-uncertain" for finding in findings))
         self.assertFalse(any(finding.rule_id == "android-cleartext-traffic-enabled" for finding in findings))
         self.assertFalse(any(finding.rule_id == "android-wildcard-deep-links-declared" for finding in findings))
+
+    def test_nested_network_policies_inherit_and_mixed_policy_is_explicit(self) -> None:
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "res" / "xml").mkdir(parents=True)
+            (root / "res" / "xml" / "n.xml").write_text(
+                '<network-security-config xmlns:android="http://schemas.android.com/apk/res/android">'
+                '<base-config android:cleartextTrafficPermitted="false" />'
+                '<domain-config><domain includeSubdomains="true">example.test</domain>'
+                '<domain-config android:cleartextTrafficPermitted="true"><domain>api.example.test</domain></domain-config>'
+                '</domain-config></network-security-config>', encoding="utf-8"
+            )
+            policy = ManifestEvidenceExtractor()._network_security_policy(root, "@xml/n", 33)
+        self.assertEqual(policy["status"], "mixed")
+        self.assertEqual(policy["domain_policies"][0]["cleartext"], "false")
+        self.assertTrue(policy["domain_policies"][0]["inherited"])
+        self.assertEqual(policy["domain_policies"][1]["cleartext"], "true")
+        self.assertFalse(policy["domain_policies"][1]["inherited"])
+        self.assertEqual(policy["domain_policies"][1]["parent_domains"], ["example.test"])
+
+    def test_deep_link_constraints_are_merged_without_claiming_ambiguous_routes(self) -> None:
+        manifest = '''<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="x">
+          <application><activity android:name=".Main"><intent-filter>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" /><data android:scheme="http" />
+            <data android:host="*.example.test" /><data android:pathPrefix="/v1" />
+            <data android:port="443" /><data android:mimeType="text/plain" />
+          </intent-filter></activity></application></manifest>'''
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "AndroidManifest.xml").write_text(manifest, encoding="utf-8")
+            link = next(item for item in ManifestEvidenceExtractor().extract(root) if item.evidence_type == "deep_link")
+        self.assertEqual({route["scheme"] for route in link.value["routes"]}, {"http", "https"})
+        self.assertEqual({route["host"] for route in link.value["routes"]}, {"*.example.test"})
+        self.assertEqual({route["path"] for route in link.value["routes"]}, {"/v1"})
+        self.assertEqual({route["port"] for route in link.value["routes"]}, {"443"})
+        self.assertEqual({route["mime_type"] for route in link.value["routes"]}, {"text/plain"})
+        self.assertEqual(link.value["scope"], "wildcard_or_missing_constraint")
+
+    def test_pdf_escapes_untrusted_report_text(self) -> None:
+        category = SimpleNamespace(value="runtime")
+        evidence = SimpleNamespace(
+            id="e1", category=category, evidence_type="runtime", label="<& \"quoted\"",
+            source_path="/tmp/<unsafe>.txt", value_json=json.dumps({"result": "observed"}),
+        )
+        finding = SimpleNamespace(
+            id="f1", title="<b>bad & title</b>", severity=SimpleNamespace(value="medium"),
+            category="Test", description="description <unsafe> & text", remediation="fix > this",
+            evidence_ids_json=json.dumps(["e1"]),
+        )
+        job = SimpleNamespace(id="pdf-test", original_filename="evil<&.apk", sha256="abc", file_size_bytes=1)
+        reasoning = [SimpleNamespace(provider="rule<&", summary="summary <x>", limitations="limits &", attack_paths_json="[]")]
+        with TemporaryDirectory() as temp:
+            output = PdfReportGenerator().generate(job, [evidence], [finding], reasoning, Path(temp))
+            self.assertTrue(output.exists())
+            self.assertGreater(output.stat().st_size, 0)
 
     def test_incomplete_extraction_coverage_is_visible(self) -> None:
         item = type("Evidence", (), {

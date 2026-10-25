@@ -250,23 +250,42 @@ class ManifestEvidenceExtractor:
                     data_elements.append({key: value for key, value in attributes.items() if value is not None})
             if not data_elements:
                 continue
+            # Android merges all <data> elements in one intent-filter into one
+            # matcher.  They are not independent scheme/host routes: a scheme
+            # declared in one element can combine with a host declared in
+            # another, and every declared value in a matcher is an alternative.
             schemes = sorted({str(item["scheme"]) for item in data_elements if item.get("scheme")})
             hosts = sorted({str(item["host"]) for item in data_elements if item.get("host")})
-            paths = sorted({str(item.get(path_key)) for item in data_elements for path_key in ("path", "pathPrefix", "pathPattern", "pathAdvancedPattern") if item.get(path_key)})
-            complete_routes = [
-                {
-                    "scheme": item.get("scheme"),
-                    "host": item.get("host"),
-                    "path": next((item.get(key) for key in ("path", "pathPrefix", "pathPattern", "pathAdvancedPattern") if item.get(key)), None),
-                }
+            ports = sorted({str(item["port"]) for item in data_elements if item.get("port")})
+            mime_types = sorted({str(item["mimeType"]) for item in data_elements if item.get("mimeType")})
+            scheme_specific_parts = sorted({str(item["schemeSpecificPart"]) for item in data_elements if item.get("schemeSpecificPart")})
+            path_constraints = [
+                {"kind": path_key, "value": str(item[path_key])}
                 for item in data_elements
-                if item.get("scheme") and item.get("host")
+                for path_key in ("path", "pathPrefix", "pathPattern", "pathAdvancedPattern")
+                if item.get(path_key)
             ]
-            routes = complete_routes if len(complete_routes) == len(data_elements) else [
-                {"scheme": scheme, "host": host, "path": path}
+            paths = sorted({constraint["value"] for constraint in path_constraints})
+            # Keep path kind in the route so a prefix/pattern is not presented
+            # as an exact path.  The cartesian product reflects Android's
+            # merged matcher and makes ambiguity explicit when a constraint is
+            # absent rather than inventing an element-local pairing.
+            routes = [
+                {
+                    "scheme": scheme,
+                    "host": host,
+                    "port": port,
+                    "path": path["value"] if path else None,
+                    "path_kind": path["kind"] if path else None,
+                    "mime_type": mime_type,
+                    "scheme_specific_part": scheme_specific_part,
+                }
                 for scheme in (schemes or [None])
                 for host in (hosts or [None])
-                for path in (paths or [None])
+                for port in (ports or [None])
+                for path in (path_constraints or [None])
+                for mime_type in (mime_types or [None])
+                for scheme_specific_part in (scheme_specific_parts or [None])
             ]
             scheme = schemes[0] if len(schemes) == 1 else None
             host = hosts[0] if len(hosts) == 1 else None
@@ -289,7 +308,11 @@ class ManifestEvidenceExtractor:
                         "scheme": scheme,
                         "host": host,
                         "path": path,
-                        "mime_type": data_elements[0].get("mimeType"),
+                        "mime_type": mime_types[0] if len(mime_types) == 1 else None,
+                        "mime_types": mime_types,
+                        "ports": ports,
+                        "path_constraints": path_constraints,
+                        "scheme_specific_parts": scheme_specific_parts,
                         "actions": actions,
                         "categories": categories,
                         "data_elements": data_elements,
@@ -322,11 +345,25 @@ class ManifestEvidenceExtractor:
         base = root.find("base-config")
         base_policy = self._android_attr(base, "cleartextTrafficPermitted") if base is not None else default
         domain_policies = []
-        for domain_config in root.findall("domain-config"):
-            policy = self._android_attr(domain_config, "cleartextTrafficPermitted") or base_policy
-            domains = [self._android_attr(domain, "includeSubdomains") or "false" for domain in domain_config.findall("domain")]
-            names = [domain.text for domain in domain_config.findall("domain") if domain.text]
-            domain_policies.append({"domains": names, "include_subdomains": domains, "cleartext": policy})
+
+        def collect_domain_configs(parent: ET.Element, inherited_policy: str, parent_domains: list[str]) -> None:
+            for domain_config in parent.findall("domain-config"):
+                configured_policy = self._android_attr(domain_config, "cleartextTrafficPermitted")
+                policy = configured_policy if configured_policy is not None else inherited_policy
+                domains = [self._android_attr(domain, "includeSubdomains") or "false" for domain in domain_config.findall("domain")]
+                names = [domain.text for domain in domain_config.findall("domain") if domain.text]
+                domain_policies.append(
+                    {
+                        "domains": names,
+                        "include_subdomains": domains,
+                        "cleartext": policy,
+                        "inherited": configured_policy is None,
+                        "parent_domains": parent_domains,
+                    }
+                )
+                collect_domain_configs(domain_config, policy, parent_domains + names)
+
+        collect_domain_configs(root, str(base_policy), [])
         values = {str(base_policy).lower(), *(str(item["cleartext"]).lower() for item in domain_policies)}
         status = "mixed" if len(values) > 1 else ("enabled" if "true" in values else "disabled")
         return {"status": status, "source": str(config_path), "base_cleartext": base_policy, "domain_policies": domain_policies}
