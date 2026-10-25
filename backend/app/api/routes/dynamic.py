@@ -126,7 +126,7 @@ def start_dynamic_analysis(
         .filter(
             AnalysisJobStage.job_id == job_id,
             AnalysisJobStage.stage == "dynamic_run",
-            AnalysisJobStage.status == "running",
+            AnalysisJobStage.status.in_(["running", "queued"]),
         )
         .first()
     )
@@ -146,7 +146,11 @@ def start_dynamic_analysis(
     db.add(run_stage)
     db.commit()
     db.refresh(run_stage)
-    submit_dynamic_job(settings, job_id, run_stage.id)
+    if not submit_dynamic_job(settings, job_id, run_stage.id):
+        run_stage.status = "queued"
+        run_stage.message = "DY-MASA analysis queued"
+        run_stage.detail = "Waiting for an available analysis worker."
+        db.commit()
     return {"status": "accepted", "job_id": job_id}
 
 

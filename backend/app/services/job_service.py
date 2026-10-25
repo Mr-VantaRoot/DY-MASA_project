@@ -6,7 +6,7 @@ from uuid import uuid4
 import hashlib
 import json
 import shutil
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from threading import RLock
 import zipfile
 
@@ -54,29 +54,81 @@ def analysis_executor(settings: Settings) -> ThreadPoolExecutor:
         return executor
 
 
-def _submit_job(settings: Settings, job_id: str, target: object, *args: object) -> bool:
+def _queued_work(settings: Settings) -> tuple[str, str, str | None] | None:
+    from app.db.session import SessionLocal
+
     with _executor_lock:
-        if job_id in _submitted_jobs:
-            return False
-        _submitted_jobs.add(job_id)
-        future = analysis_executor(settings).submit(target, *args)
+        submitted = set(_submitted_jobs)
+    statement = select(AnalysisJob.id, AnalysisJob.created_at).where(AnalysisJob.status == AnalysisJobStatus.queued)
+    if submitted:
+        statement = statement.where(~AnalysisJob.id.in_(submitted))
+    with SessionLocal() as db:
+        static = db.execute(statement.order_by(AnalysisJob.created_at.asc()).limit(1)).first()
+        dynamic = db.execute(
+            select(AnalysisJobStage.id, AnalysisJobStage.job_id, AnalysisJobStage.created_at)
+            .where(
+                AnalysisJobStage.stage == "dynamic_run",
+                AnalysisJobStage.status == "queued",
+                ~AnalysisJobStage.job_id.in_(submitted) if submitted else True,
+            )
+            .order_by(AnalysisJobStage.created_at.asc())
+            .limit(1)
+        ).first()
+    if static is None and dynamic is None:
+        return None
+    if dynamic is not None and (static is None or dynamic.created_at < static.created_at):
+        return "dynamic", dynamic.job_id, dynamic.id
+    return "static", static.id, None
 
-    def release(_future: object) -> None:
+
+def _dispatch_available(settings: Settings) -> int:
+    """Fill only currently available worker slots from durable queued jobs."""
+    submitted = 0
+    limit = max(1, int(settings.max_concurrent_analysis_jobs))
+    while True:
         with _executor_lock:
-            _submitted_jobs.discard(job_id)
+            if len(_submitted_jobs) >= limit:
+                return submitted
+        work = _queued_work(settings)
+        if work is None:
+            return submitted
+        kind, job_id, stage_id = work
+        with _executor_lock:
+            if job_id in _submitted_jobs or len(_submitted_jobs) >= limit:
+                continue
+            _submitted_jobs.add(job_id)
+            if kind == "dynamic":
+                from app.api.routes.dynamic import _run_dynamic
 
-    future.add_done_callback(release)
-    return True
+                future = analysis_executor(settings).submit(_run_dynamic, job_id, stage_id, settings)
+            else:
+                future = analysis_executor(settings).submit(JobRunner(settings).prepare_uploaded_apk, job_id)
+            future.add_done_callback(lambda _future, completed=job_id, config=settings: _job_finished(completed, config))
+            submitted += 1
+
+
+def _job_finished(job_id: str, settings: Settings) -> None:
+    with _executor_lock:
+        _submitted_jobs.discard(job_id)
+    _dispatch_available(settings)
 
 
 def submit_analysis_job(settings: Settings, job_id: str) -> bool:
-    return _submit_job(settings, job_id, JobRunner(settings).prepare_uploaded_apk, job_id)
+    before = job_id in _submitted_jobs
+    _dispatch_available(settings)
+    return not before and job_id in _submitted_jobs
 
 
 def submit_dynamic_job(settings: Settings, job_id: str, stage_id: int) -> bool:
     from app.api.routes.dynamic import _run_dynamic
 
-    return _submit_job(settings, job_id, _run_dynamic, job_id, stage_id, settings)
+    with _executor_lock:
+        if job_id in _submitted_jobs or len(_submitted_jobs) >= max(1, int(settings.max_concurrent_analysis_jobs)):
+            return False
+        _submitted_jobs.add(job_id)
+        future: Future[object] = analysis_executor(settings).submit(_run_dynamic, job_id, stage_id, settings)
+        future.add_done_callback(lambda _future: _job_finished(job_id, settings))
+        return True
 
 
 @dataclass(frozen=True)
@@ -673,15 +725,5 @@ def cleanup_interrupted_jobs(settings: Settings) -> int:
 
 
 def dispatch_queued_jobs(settings: Settings) -> int:
-    """Resume durable queued work after startup through the bounded worker pool."""
-    from app.db.session import SessionLocal
-
-    with SessionLocal() as db:
-        job_ids = list(
-            db.scalars(
-                select(AnalysisJob.id)
-                .where(AnalysisJob.status == AnalysisJobStatus.queued)
-                .order_by(AnalysisJob.created_at.asc())
-            ).all()
-        )
-    return sum(submit_analysis_job(settings, job_id) for job_id in job_ids)
+    """Resume only available durable queued work; remaining jobs stay in the DB."""
+    return _dispatch_available(settings)

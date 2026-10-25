@@ -175,7 +175,7 @@ def stream_job_events(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis job not found.")
 
     async def event_stream() -> object:
-        current_event_id = max(0, last_event_id if isinstance(last_event_id, int) else 0)
+        current_event_id = last_event_id if isinstance(last_event_id, int) else 0
         terminal_event_seen = False
         terminal_deadline: float | None = None
         initial_events = _events_after(job_id, current_event_id)

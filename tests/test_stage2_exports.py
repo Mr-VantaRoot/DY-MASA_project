@@ -79,6 +79,32 @@ class Stage2ExportTests(unittest.TestCase):
         unprotected = next(finding for finding in findings if "without component-level permission" in finding.title)
         self.assertNotIn(".MainActivity", unprotected.description)
 
+    def test_api31_missing_exported_is_installation_issue_not_external_exposure(self) -> None:
+        manifest = '''<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="example.app">
+          <uses-sdk android:targetSdkVersion="31" />
+          <application><activity android:name=".NeedsAttribute">
+            <intent-filter><action android:name="example.ACTION" /></intent-filter>
+          </activity></application>
+        </manifest>'''
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "AndroidManifest.xml").write_text(manifest, encoding="utf-8")
+            evidence = ManifestEvidenceExtractor().extract(root)
+        component = next(item for item in evidence if item.evidence_type == "activity")
+        self.assertTrue(component.value["exported_implicit"])
+        self.assertTrue(component.value["exported_installation_invalid"])
+        self.assertFalse(component.value["exported_effective"])
+        component_evidence = [SimpleNamespace(
+            id="api31-component",
+            label=component.label,
+            evidence_type=component.evidence_type,
+            category=SimpleNamespace(value="component"),
+            value_json=json.dumps(component.value),
+        )]
+        findings = EvidenceFindingGenerator().generate(component_evidence)
+        self.assertTrue(any(finding.category == "Manifest Compatibility" for finding in findings))
+        self.assertFalse(any(finding.rule_id.startswith("android-exported-activity") for finding in findings))
+
 
 if __name__ == "__main__":
     unittest.main()

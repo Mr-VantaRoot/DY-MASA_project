@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 import unittest
 
 from analysis.code_risk import CodeRiskEvidenceExtractor
@@ -77,6 +78,48 @@ class DetectionAccuracyTests(unittest.TestCase):
         self.assertEqual(len(links), 1)
         self.assertEqual(links[0].value["scope"], "explicit_scheme_host")
         self.assertEqual(len(links[0].value["data_elements"]), 2)
+
+    def test_network_security_config_and_multiple_routes_are_not_overstated(self) -> None:
+        manifest = '''<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="x">
+          <uses-sdk android:targetSdkVersion="33" />
+          <application android:networkSecurityConfig="@xml/network_security_config">
+            <activity android:name=".Main"><intent-filter>
+              <action android:name="android.intent.action.VIEW" />
+              <data android:scheme="https" android:host="one.example" />
+              <data android:scheme="http" android:host="two.example" />
+            </intent-filter></activity>
+          </application>
+        </manifest>'''
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "AndroidManifest.xml").write_text(manifest, encoding="utf-8")
+            (root / "res" / "xml").mkdir(parents=True)
+            (root / "res" / "xml" / "network_security_config.xml").write_text(
+                '<network-security-config xmlns:android="http://schemas.android.com/apk/res/android"><base-config android:cleartextTrafficPermitted="false" />'
+                '<domain-config android:cleartextTrafficPermitted="true"><domain>two.example</domain></domain-config>'
+                '</network-security-config>',
+                encoding="utf-8",
+            )
+            evidence = ManifestEvidenceExtractor().extract(root)
+        flags = next(item.value for item in evidence if item.evidence_type == "application_flags")
+        self.assertIsNone(flags["uses_cleartext_traffic_effective"])
+        self.assertEqual(flags["network_security_policy"]["status"], "mixed")
+        links = next(item for item in evidence if item.evidence_type == "deep_link")
+        self.assertEqual(len(links.value["routes"]), 2)
+        self.assertEqual(links.value["scope"], "explicit_scheme_host")
+        findings = EvidenceFindingGenerator().generate([
+            SimpleNamespace(
+                id=f"e{index}",
+                label=item.label,
+                evidence_type=item.evidence_type,
+                category=SimpleNamespace(value=item.category.value),
+                value_json=item.value_json,
+            )
+            for index, item in enumerate(evidence)
+        ])
+        self.assertTrue(any(finding.rule_id == "android-cleartext-policy-uncertain" for finding in findings))
+        self.assertFalse(any(finding.rule_id == "android-cleartext-traffic-enabled" for finding in findings))
+        self.assertFalse(any(finding.rule_id == "android-wildcard-deep-links-declared" for finding in findings))
 
     def test_incomplete_extraction_coverage_is_visible(self) -> None:
         item = type("Evidence", (), {

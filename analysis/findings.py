@@ -25,6 +25,7 @@ class EvidenceFindingGenerator:
         findings: list[FindingCandidate] = []
         findings.extend(self._application_flag_findings(evidence))
         findings.extend(self._coverage_findings(evidence))
+        findings.extend(self._manifest_compatibility_findings(evidence))
         findings.extend(self._exported_component_findings(evidence))
         findings.extend(self._provider_review_findings(evidence))
         findings.extend(self._deep_link_findings(evidence))
@@ -74,7 +75,9 @@ class EvidenceFindingGenerator:
                         evidence_ids=[item.id],
                     )
                 )
-            if value.get("uses_cleartext_traffic_effective", value.get("uses_cleartext_traffic")) == "true":
+            policy = value.get("network_security_policy") or {}
+            effective_cleartext = value.get("uses_cleartext_traffic_effective", value.get("uses_cleartext_traffic"))
+            if effective_cleartext == "true":
                 cleartext_detail = "The manifest explicitly permits cleartext network traffic." if value.get("uses_cleartext_traffic") is not None else "The manifest omits android:usesCleartextTraffic and the target SDK uses the permissive legacy default."
                 findings.append(
                     FindingCandidate(
@@ -92,7 +95,46 @@ class EvidenceFindingGenerator:
                         evidence_ids=[item.id],
                     )
                 )
+            elif policy.get("status") in {"mixed", "unknown"}:
+                findings.append(
+                    FindingCandidate(
+                        rule_id="android-cleartext-policy-uncertain",
+                        title="Cleartext traffic policy requires review",
+                        severity=FindingSeverity.info,
+                        category="Network Security",
+                        description=self._with_metadata(
+                            "The network security configuration does not establish one global cleartext policy; domain-specific or unavailable configuration may change the effective behavior.",
+                            "Informational because static analysis cannot confirm a globally insecure setting from this configuration alone.",
+                            "MASVS-NETWORK",
+                            "0.0",
+                        ),
+                        remediation="Review the referenced network security configuration and test each configured domain on the target Android version.",
+                        evidence_ids=[item.id],
+                    )
+                )
         return findings
+
+    def _manifest_compatibility_findings(self, evidence: list[AnalysisEvidence]) -> list[FindingCandidate]:
+        invalid = [item for item in evidence if item.category.value == "component" and self._value(item).get("exported_installation_invalid") is True]
+        if not invalid:
+            return []
+        labels = [str(self._value(item).get("name") or item.label) for item in invalid]
+        return [
+            FindingCandidate(
+                rule_id="android-exported-attribute-required-for-installation",
+                title=f"{len(invalid)} component(s) require android:exported for API 31+ installation",
+                severity=FindingSeverity.info,
+                category="Manifest Compatibility",
+                description=self._with_metadata(
+                    f"Target SDK 31+ requires an explicit android:exported value for intent-filter components: {', '.join(labels)}. These components are not counted as effectively externally accessible until the manifest is corrected.",
+                    "Informational because this is an installation-compatibility issue, not a confirmed exported-component security exposure.",
+                    "MASVS-PLATFORM",
+                    "0.0",
+                ),
+                remediation="Declare android:exported explicitly according to the intended component exposure.",
+                evidence_ids=[item.id for item in invalid],
+            )
+        ]
 
     def _coverage_findings(self, evidence: list[AnalysisEvidence]) -> list[FindingCandidate]:
         incomplete = []
@@ -255,9 +297,14 @@ class EvidenceFindingGenerator:
         normal = []
         for item in deep_links:
             value = self._value(item)
-            host = value.get("host")
-            scheme = value.get("scheme")
-            if value.get("scope") != "explicit_scheme_host" or host in {None, "", "*"} or scheme in {None, "", "*"} or "*" in str(host):
+            routes = value.get("routes") or [{"scheme": value.get("scheme"), "host": value.get("host"), "path": value.get("path")}]
+            weak_route = any(
+                route.get("scheme") in {None, "", "*"}
+                or route.get("host") in {None, "", "*"}
+                or "*" in str(route.get("host") or "")
+                for route in routes
+            )
+            if value.get("scope") != "explicit_scheme_host" or weak_route:
                 wildcard.append(item)
             else:
                 normal.append(item)

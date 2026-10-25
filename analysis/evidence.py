@@ -106,7 +106,7 @@ class ManifestEvidenceExtractor:
         application = root.find("application")
         if application is not None:
             target_sdk = self._uses_sdk_value(root, "targetSdkVersion")
-            evidence.extend(self._application_flags(application, manifest_path, target_sdk))
+            evidence.extend(self._application_flags(application, manifest_path, target_sdk, apktool_output_path))
             evidence.extend(self._components(application, manifest_path, target_sdk))
 
         return evidence
@@ -131,20 +131,35 @@ class ManifestEvidenceExtractor:
                 )
         return evidence
 
-    def _application_flags(self, application: ET.Element, manifest_path: Path, target_sdk: str | None) -> list[EvidenceItem]:
+    def _application_flags(
+        self,
+        application: ET.Element,
+        manifest_path: Path,
+        target_sdk: str | None,
+        apktool_output_path: Path,
+    ) -> list[EvidenceItem]:
         target = self._sdk_int(target_sdk)
         allow_backup = self._android_attr(application, "allowBackup")
         cleartext = self._android_attr(application, "usesCleartextTraffic")
+        security_config = self._android_attr(application, "networkSecurityConfig")
+        network_policy = self._network_security_policy(apktool_output_path, security_config, target)
+        if network_policy["status"] == "enabled":
+            cleartext_effective = "true"
+        elif network_policy["status"] == "disabled":
+            cleartext_effective = "false"
+        else:
+            cleartext_effective = None if security_config else (cleartext if cleartext is not None else ("false" if target is not None and target >= 28 else "true"))
         flags = {
             "debuggable": self._android_attr(application, "debuggable"),
             "allow_backup": allow_backup,
             "allow_backup_effective": allow_backup if allow_backup is not None else "true",
             "allow_backup_implicit": allow_backup is None,
             "uses_cleartext_traffic": cleartext,
-            "uses_cleartext_traffic_effective": cleartext if cleartext is not None else ("false" if target is not None and target >= 28 else "true"),
+            "uses_cleartext_traffic_effective": cleartext_effective,
             "uses_cleartext_traffic_implicit": cleartext is None,
             "target_sdk": target_sdk,
-            "network_security_config": self._android_attr(application, "networkSecurityConfig"),
+            "network_security_config": security_config,
+            "network_security_policy": network_policy,
         }
         return [
             EvidenceItem(
@@ -169,7 +184,9 @@ class ManifestEvidenceExtractor:
                     and component_type != "content_provider"
                     and bool(intent_filters)
                 )
-                exported_effective = exported == "true" or exported_implicit
+                target = self._sdk_int(target_sdk)
+                exported_required_for_install = bool(exported is None and intent_filters and target is not None and target >= 31)
+                exported_effective = exported == "true" or (exported_implicit and not exported_required_for_install)
                 evidence.append(
                     EvidenceItem(
                         category=EvidenceCategory.component,
@@ -182,7 +199,9 @@ class ManifestEvidenceExtractor:
                             "exported_effective": exported_effective,
                             "exported_implicit": exported_implicit,
                             "exported_default_rule": "intent-filter implies exported for legacy platform behavior" if exported_implicit else None,
-                            "exported_required_for_install": bool(exported is None and intent_filters and self._sdk_int(target_sdk) is not None and self._sdk_int(target_sdk) >= 31),
+                            "exported_required_for_install": exported_required_for_install,
+                            "exported_installation_invalid": exported_required_for_install,
+                            "target_sdk": target_sdk,
                             "launcher_entry": self._launcher_entry(component_type, intent_filters),
                             "intent_filter_count": len(intent_filters),
                             "permission": self._android_attr(component, "permission"),
@@ -234,10 +253,28 @@ class ManifestEvidenceExtractor:
             schemes = sorted({str(item["scheme"]) for item in data_elements if item.get("scheme")})
             hosts = sorted({str(item["host"]) for item in data_elements if item.get("host")})
             paths = sorted({str(item.get(path_key)) for item in data_elements for path_key in ("path", "pathPrefix", "pathPattern", "pathAdvancedPattern") if item.get(path_key)})
+            complete_routes = [
+                {
+                    "scheme": item.get("scheme"),
+                    "host": item.get("host"),
+                    "path": next((item.get(key) for key in ("path", "pathPrefix", "pathPattern", "pathAdvancedPattern") if item.get(key)), None),
+                }
+                for item in data_elements
+                if item.get("scheme") and item.get("host")
+            ]
+            routes = complete_routes if len(complete_routes) == len(data_elements) else [
+                {"scheme": scheme, "host": host, "path": path}
+                for scheme in (schemes or [None])
+                for host in (hosts or [None])
+                for path in (paths or [None])
+            ]
             scheme = schemes[0] if len(schemes) == 1 else None
             host = hosts[0] if len(hosts) == 1 else None
             path = paths[0] if len(paths) == 1 else None
-            wildcard = not schemes or not hosts or any("*" in value for value in (*schemes, *hosts, *paths))
+            wildcard = any(
+                not route["scheme"] or not route["host"] or any("*" in str(route.get(key) or "") for key in ("scheme", "host", "path"))
+                for route in routes
+            )
             actions = sorted(filter(None, (self._android_attr(action, "name") for action in intent_filter.findall("action"))))
             categories = sorted(filter(None, (self._android_attr(category, "name") for category in intent_filter.findall("category"))))
             label = f"{scheme or '*'}://{host or '*'}{path or ''}"
@@ -256,6 +293,7 @@ class ManifestEvidenceExtractor:
                         "actions": actions,
                         "categories": categories,
                         "data_elements": data_elements,
+                        "routes": routes,
                         "filter_index": filter_index,
                         "scope": "wildcard_or_missing_constraint" if wildcard else "explicit_scheme_host",
                     },
@@ -265,9 +303,37 @@ class ManifestEvidenceExtractor:
             )
         return evidence
 
+    def _network_security_policy(self, apktool_output_path: Path, reference: str | None, target_sdk: int | None) -> dict[str, object]:
+        if not reference:
+            return {"status": "not_configured", "source": None, "domain_policies": []}
+        resource_name = reference.rsplit("/", 1)[-1].replace("@xml/", "")
+        candidates = [
+            apktool_output_path / "res" / "xml" / f"{resource_name}.xml",
+            apktool_output_path / "res" / "xml" / resource_name,
+        ]
+        config_path = next((candidate for candidate in candidates if candidate.exists()), None)
+        if config_path is None:
+            return {"status": "unknown", "source": reference, "reason": "Referenced network security configuration was not found."}
+        try:
+            root = ET.parse(config_path).getroot()
+        except (ET.ParseError, OSError) as exc:
+            return {"status": "unknown", "source": str(config_path), "reason": f"Could not parse network security configuration: {exc}"}
+        default = "false" if target_sdk is not None and target_sdk >= 28 else "true"
+        base = root.find("base-config")
+        base_policy = self._android_attr(base, "cleartextTrafficPermitted") if base is not None else default
+        domain_policies = []
+        for domain_config in root.findall("domain-config"):
+            policy = self._android_attr(domain_config, "cleartextTrafficPermitted") or base_policy
+            domains = [self._android_attr(domain, "includeSubdomains") or "false" for domain in domain_config.findall("domain")]
+            names = [domain.text for domain in domain_config.findall("domain") if domain.text]
+            domain_policies.append({"domains": names, "include_subdomains": domains, "cleartext": policy})
+        values = {str(base_policy).lower(), *(str(item["cleartext"]).lower() for item in domain_policies)}
+        status = "mixed" if len(values) > 1 else ("enabled" if "true" in values else "disabled")
+        return {"status": status, "source": str(config_path), "base_cleartext": base_policy, "domain_policies": domain_policies}
+
     @staticmethod
-    def _android_attr(element: ET.Element, name: str) -> str | None:
-        return element.attrib.get(f"{ANDROID_NS}{name}")
+    def _android_attr(element: ET.Element | None, name: str) -> str | None:
+        return element.attrib.get(f"{ANDROID_NS}{name}") if element is not None else None
 
     def _uses_sdk_value(self, root: ET.Element, name: str) -> str | None:
         uses_sdk = root.find("uses-sdk")

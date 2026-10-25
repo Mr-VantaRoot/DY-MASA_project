@@ -15,7 +15,7 @@ from app.api.routes.jobs import _events_after, _resolve_storage_file, stream_job
 from app.api.routes.dynamic import _manager
 from app.core.config import Settings
 from app.db.base import AnalysisJobStatus, Base
-from app.services.job_events import JobEventStore, emit_job_event, job_event_store
+from app.services.job_events import JobEventStore, JobStageEvent, emit_job_event, job_event_store
 from app.services.job_service import JobService, analysis_executor, dispatch_queued_jobs
 from dynamic.adb.client import AdbResult
 from dynamic.runtime.orchestrator import DynamicAnalysisError, DynamicRuntimeOrchestrator
@@ -32,6 +32,20 @@ class ConfirmedBugTests(unittest.TestCase):
         self.assertEqual(sum(len(store.snapshot(job)) for job in ("job-a", "job-b")), 2)
         self.assertNotEqual(memory_id, 1)
         self.assertLess(memory_id, 0)
+
+    def test_sse_merge_and_reconnect_handles_negative_cache_and_positive_persistent_ids(self) -> None:
+        job_id = "mixed-event-id-history"
+        job_event_store.clear(job_id)
+        emit_job_event(job_id, "cache-first", "running", "Cache first")
+        first_id = job_event_store.snapshot(job_id)[0].event_id
+        emit_job_event(job_id, "cache-newer", "running", "Cache newer")
+        persisted = JobStageEvent(10, "database-event", "completed", "Database event")
+        with patch("app.api.routes.jobs._persistent_events", return_value=[persisted]):
+            initial = _events_after(job_id)
+            reconnect = _events_after(job_id, after_event_id=first_id)
+        self.assertEqual([event.stage for event in initial], ["cache-first", "cache-newer", "database-event"])
+        self.assertEqual([event.stage for event in reconnect], ["cache-newer", "database-event"])
+        job_event_store.clear(job_id)
 
     def test_job_history_listing_has_no_persistent_50_item_cap(self) -> None:
         db = MagicMock()
@@ -109,14 +123,20 @@ class ConfirmedBugTests(unittest.TestCase):
         self.assertEqual(analysis_executor(settings)._max_workers, 2)
 
         fake_db = MagicMock()
-        fake_db.scalars.return_value.all.return_value = ["queued-1", "queued-2"]
+        fake_db.execute.side_effect = [
+            SimpleNamespace(first=lambda: SimpleNamespace(id="queued-1", created_at=1)),
+            SimpleNamespace(first=lambda: None),
+            SimpleNamespace(first=lambda: SimpleNamespace(id="queued-2", created_at=2)),
+            SimpleNamespace(first=lambda: None),
+        ]
         context = MagicMock()
         context.__enter__.return_value = fake_db
         context.__exit__.return_value = False
         with patch("app.db.session.SessionLocal", return_value=context), \
-            patch("app.services.job_service.submit_analysis_job", side_effect=[True, True]) as submit:
+            patch.object(analysis_executor(settings), "submit", return_value=MagicMock()) as submit:
             self.assertEqual(dispatch_queued_jobs(settings), 2)
         self.assertEqual(submit.call_count, 2)
+        self.assertEqual(fake_db.execute.call_count, 4)
 
     def _settings(self, root: Path) -> SimpleNamespace:
         return SimpleNamespace(
