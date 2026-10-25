@@ -106,13 +106,21 @@ class LocalTerminal:
     def _validate_command_mode(self, command: str) -> None:
         """Reject programs that require an interactive TTY or run indefinitely."""
         try:
-            tokens = shlex.split(command, posix=True)
-        except ValueError:
-            return
-        operators = {";", "&&", "||", "|", "&"}
+            # Keep shell control operators separate so commands after ;, &&, ||,
+            # pipes, and background operators are validated as commands too.
+            lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|")
+            lexer.whitespace_split = True
+            tokens = list(lexer)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid shell syntax: {exc}",
+            ) from exc
         expecting_command = True
         for index, token in enumerate(tokens):
-            if token in operators:
+            # shlex can group repeated punctuation (for example, "&&" or "|||").
+            # Treat any token made entirely of control punctuation as an operator.
+            if token and all(char in ";&|" for char in token):
                 expecting_command = True
                 continue
             if not expecting_command:
@@ -127,7 +135,7 @@ class LocalTerminal:
                     ),
                 )
             if command_name in {"python", "python3", "perl", "ruby", "node"} and (
-                index + 1 >= len(tokens) or tokens[index + 1] in operators or any(
+                index + 1 >= len(tokens) or (tokens[index + 1] and all(char in ";&|" for char in tokens[index + 1])) or any(
                     flag.lower() in self.INTERPRETER_CODE_FLAGS for flag in tokens[index + 1 :]
                 )
             ):
@@ -156,9 +164,11 @@ class LocalTerminal:
             if "=" in token:
                 candidates.append(token.split("=", 1)[1])
             for candidate in candidates:
-                if not candidate.startswith(("/", "./", "../")):
+                # Validate nested relative paths too (e.g. "assets/../../etc/passwd"),
+                # not only paths that begin with "./" or "../".
+                if not candidate.startswith(("/", "./", "../")) and "/" not in candidate and "\\" not in candidate:
                     continue
-                path = Path(candidate)
+                path = Path(candidate).expanduser()
                 resolved = path.resolve() if path.is_absolute() else (working_directory / path).resolve()
                 if not self._is_allowed_path(resolved):
                     raise HTTPException(
