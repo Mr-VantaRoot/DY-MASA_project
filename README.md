@@ -332,8 +332,8 @@ This helper checks Java, the configured/default apktool and JADX JAR paths, ADB,
 ### 3. Install backend dependencies
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
+python3.12 -m venv myenv
+source myenv/bin/activate
 pip install -r backend/requirements.txt
 ```
 
@@ -383,7 +383,7 @@ Useful URLs:
 - Health: http://127.0.0.1:8000/api/health
 - Interactive API docs: http://127.0.0.1:8000/docs
 
-The backend and frontend are separate processes; keep both running while using the web app.
+The backend and frontend are separate processes; keep both running while using the web app. In the backend terminal, activate the same Python environment where you installed the backend requirements before starting the helper. The helper prefers `./myenv/bin/python` if that file exists; otherwise it uses `python` from the current shell's PATH.
 
 ### Run the static pipeline from the CLI
 
@@ -499,7 +499,7 @@ Routes below are mounted under `/api`, except the interactive documentation at `
 | `GET /api/dynamic/status` | Check Android device/emulator status |
 | `GET /api/dynamic/storage` | Read device storage totals and optional media-size estimates |
 | `POST /api/jobs/{id}/dynamic/start` | Start runtime validation |
-| `GET /api/jobs/{id}/dynamic/events` | Stream runtime-stage events |
+| `GET /api/jobs/{id}/dynamic/events` | List stored runtime-stage events |
 | `GET /api/jobs/{id}/dynamic/evidence` | Read runtime evidence |
 | `POST /api/terminal/run` | Run a command through the optional terminal, only when enabled |
 
@@ -510,6 +510,7 @@ Routes below are mounted under `/api`, except the interactive documentation at `
 Run the Python test suite from the repository root in the configured Python environment:
 
 ```bash
+source myenv/bin/activate
 PYTHONPATH=.:backend python -m unittest discover -s tests
 ```
 
@@ -577,4 +578,8 @@ Use this software only on applications and devices you own or have written permi
 
 **Author:** Ibsa T. — [@Mr-VantaRoot](https://github.com/Mr-VantaRoot). Developed as an INSA exit project.
 
-Related documentation: [RUNBOOK.md](RUNBOOK.md). Check the repository for any additional presentation notes, technical briefs, or changelog files before linking to them.
+Related documentation:
+- [RUNBOOK.md](RUNBOOK.md) — operational setup and troubleshooting notes.
+- [CHANGELOG_DYMASA_RUNTIME.md](CHANGELOG_DYMASA_RUNTIME.md) — runtime feature history and verification limitations.
+- [TECHNICAL_PRESENTATION_BRIEF.md](TECHNICAL_PRESENTATION_BRIEF.md) — detailed technical overview and claim boundaries.
+- [PRESENTATION_NOTES.md](PRESENTATION_NOTES.md) — presentation guidance and known limitations.
