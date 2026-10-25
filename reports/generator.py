@@ -17,6 +17,19 @@ from reportlab.platypus import (
 )
 
 
+def _display_path(value: object, storage_root: Path | None = None) -> str:
+    path = Path(str(value))
+    if storage_root is not None:
+        try:
+            return str(path.resolve().relative_to(storage_root.resolve()))
+        except ValueError:
+            pass
+    parts = path.parts
+    if "storage" in parts:
+        return "/".join(parts[parts.index("storage") + 1:])
+    return path.name or str(value)
+
+
 class HtmlReportGenerator:
     def generate(
         self,
@@ -29,7 +42,7 @@ class HtmlReportGenerator:
         report_dir.mkdir(parents=True, exist_ok=True)
         report_path = report_dir / f"{job.id}.html"
         report_path.write_text(
-            self._render(job, evidence, findings, reasoning),
+            self._render(job, evidence, findings, reasoning, report_dir),
             encoding="utf-8",
         )
         return report_path
@@ -40,6 +53,7 @@ class HtmlReportGenerator:
         evidence: list[AnalysisEvidence],
         findings: list[AnalysisFinding],
         reasoning: list[AnalysisReasoning],
+        report_dir: Path,
     ) -> str:
         evidence_by_id = {item.id: item for item in evidence}
         latest_reasoning = reasoning[-1] if reasoning else None
@@ -75,11 +89,11 @@ class HtmlReportGenerator:
   {self._runtime_limitations(evidence)}
   {self._executive_summary(findings, latest_reasoning)}
   {self._key_findings(findings)}
-  {self._findings(findings, evidence_by_id, evidence)}
-  {self._validation_plan(findings)}
-  {self._runtime_evidence(evidence)}
-  {self._dynamic_validation_section(evidence)}
-  {self._evidence(evidence)}
+  {self._findings(findings, evidence_by_id, evidence, report_dir)}
+  {self._validation_plan(findings, evidence_by_id)}
+  {self._runtime_evidence(evidence, report_dir)}
+  {self._dynamic_validation_section(evidence, report_dir)}
+  {self._evidence(evidence, report_dir)}
   {self._reasoning(latest_reasoning)}
 </body>
 </html>
@@ -123,7 +137,7 @@ class HtmlReportGenerator:
 """
 
     @staticmethod
-    def _dynamic_validation_section(evidence: list[AnalysisEvidence]) -> str:
+    def _dynamic_validation_section(evidence: list[AnalysisEvidence], report_dir: Path) -> str:
         validations = [item for item in evidence if item.category.value == "runtime" and item.evidence_type == "dynamic_validation"]
         if not validations:
             return "<h2>Dynamic Validation</h2><p>No per-step DY-MASA validation records were captured.</p>"
@@ -138,7 +152,7 @@ class HtmlReportGenerator:
                 f"<tr><td>{escape(str(payload.get('result', 'potential')).upper())}</td>"
                 f"<td>{escape(str(payload.get('action', item.label)))}</td>"
                 f"<td>{escape(str(len(crashes)))}</td>"
-                f"<td><code>{escape(str(payload.get('step_log_path', '')))}</code></td></tr>"
+                f"<td><code>{escape(_display_path(payload.get('step_log_path', ''), report_dir.parent))}</code></td></tr>"
             )
         return """
 <h2>Dynamic Validation</h2>
@@ -189,6 +203,7 @@ class HtmlReportGenerator:
         findings: list[AnalysisFinding],
         evidence_by_id: dict[str, AnalysisEvidence],
         evidence: list[AnalysisEvidence],
+        report_dir: Path,
     ) -> str:
         if not findings:
             return "<h2>Technical Findings</h2><p>No evidence-backed findings were generated.</p>"
@@ -200,11 +215,12 @@ class HtmlReportGenerator:
 <section class="finding">
   <h3>{escape(finding.title)}</h3>
   <p class="severity {escape(finding.severity.value)}">{escape(finding.severity.value)}</p>
+  <p><strong>Assessment:</strong> {escape(self._assessment_label(finding))}</p>
   <p><strong>Category:</strong> {escape(finding.category)}</p>
   <p>{escape(finding.description)}</p>
   <p><strong>Remediation:</strong> {escape(finding.remediation)}</p>
   <p><strong>Evidence:</strong></p>
-  <ul>{self._evidence_links(evidence_ids, evidence_by_id)}</ul>
+  <ul>{self._evidence_links(evidence_ids, evidence_by_id, report_dir)}</ul>
   {self._runtime_validation_links(finding, evidence)}
 </section>
 """
@@ -212,13 +228,30 @@ class HtmlReportGenerator:
         return "\n".join(rendered)
 
     @staticmethod
-    def _evidence_links(evidence_ids: list[str], evidence_by_id: dict[str, AnalysisEvidence]) -> str:
+    def _evidence_links(evidence_ids: list[str], evidence_by_id: dict[str, AnalysisEvidence], report_dir: Path) -> str:
         items = []
         for evidence_id in evidence_ids:
             evidence = evidence_by_id.get(evidence_id)
             label = evidence.label if evidence else evidence_id
-            items.append(f"<li><code>{escape(evidence_id)}</code> - {escape(label)}</li>")
+            if evidence is None:
+                items.append(f"<li><code>{escape(evidence_id)}</code> - {escape(label)}</li>")
+                continue
+            try:
+                payload = json.loads(evidence.value_json)
+            except json.JSONDecodeError:
+                payload = {}
+            context = str(payload.get("matched_context") or "").strip()
+            detail = f"; source: {_display_path(evidence.source_path, report_dir.parent)}"
+            if context:
+                detail += f"; context: {context}"
+            items.append(f"<li><code>{escape(evidence_id)}</code> - {escape(label)}<small>{escape(detail)}</small></li>")
         return "\n".join(items)
+
+    @staticmethod
+    def _assessment_label(finding: AnalysisFinding) -> str:
+        if finding.severity.value == "info":
+            return "Informational observation"
+        return "Potential risk from static evidence; exploitability is not confirmed"
 
     @staticmethod
     def _runtime_validation_links(finding: AnalysisFinding, evidence: list[AnalysisEvidence]) -> str:
@@ -246,16 +279,16 @@ class HtmlReportGenerator:
 """
 
     @staticmethod
-    def _evidence(evidence: list[AnalysisEvidence]) -> str:
+    def _evidence(evidence: list[AnalysisEvidence], report_dir: Path) -> str:
         rows = []
         for item in evidence[:80]:
             rows.append(
                 f"<tr><td>{escape(item.category.value)}</td><td>{escape(item.evidence_type)}</td>"
-                f"<td>{escape(item.label)}</td><td><code>{escape(item.source_path)}</code></td></tr>"
+                f"<td>{escape(item.label)}</td><td><code>{escape(_display_path(item.source_path, report_dir.parent))}</code></td></tr>"
             )
         body = "\n".join(rows) or '<tr><td colspan="4">No evidence extracted.</td></tr>'
         truncated = (
-            f'<p class="meta">Showing first 80 of {len(evidence)} evidence records.</p>'
+            f'<p class="meta">Showing first 80 of {len(evidence)} normalized persisted evidence records.</p>'
             if len(evidence) > 80
             else ""
         )
@@ -269,7 +302,7 @@ class HtmlReportGenerator:
 """
 
     @staticmethod
-    def _runtime_evidence(evidence: list[AnalysisEvidence]) -> str:
+    def _runtime_evidence(evidence: list[AnalysisEvidence], report_dir: Path) -> str:
         runtime_evidence = [item for item in evidence if item.category.value == "runtime"]
         if not runtime_evidence:
             return ""
@@ -282,7 +315,7 @@ class HtmlReportGenerator:
             result = payload.get("result", "observed")
             rows.append(
                 f"<tr><td>{escape(item.evidence_type)}</td><td>{escape(str(result).upper())}</td>"
-                f"<td>{escape(item.label)}</td><td><code>{escape(item.source_path)}</code></td></tr>"
+                f"<td>{escape(item.label)}</td><td><code>{escape(_display_path(item.source_path, report_dir.parent))}</code></td></tr>"
             )
         rows = "\n".join(rows)
         limits_note = ""
@@ -300,6 +333,14 @@ class HtmlReportGenerator:
                     noteworthy = {key: value for key, value in values.items() if key not in {"max_file_bytes", "max_evidence_per_rule"} and value not in (0, False, [], {})}
                     if noteworthy:
                         details.append(f"{name}: {json.dumps(noteworthy, sort_keys=True)}")
+                normalization = payload.get("normalization")
+                if isinstance(normalization, dict):
+                    details.append(
+                        "evidence normalization: "
+                        f"{normalization.get('raw_count', 0)} raw records -> "
+                        f"{normalization.get('normalized_count', 0)} persisted records; "
+                        f"{normalization.get('cross_tool_duplicates_removed', 0)} cross-tool duplicates removed"
+                    )
             limits_note = "<p><strong>Extraction coverage:</strong> reported for transparency; " + escape("; ".join(details) or "no limits reached") + ".</p>"
         return f"""
 <h2>DY-MASA Runtime Evidence</h2>
@@ -312,11 +353,12 @@ class HtmlReportGenerator:
 """
 
     @staticmethod
-    def _validation_plan(findings: list[AnalysisFinding]) -> str:
+    def _validation_plan(findings: list[AnalysisFinding], evidence_by_id: dict[str, AnalysisEvidence]) -> str:
         if not findings:
             return ""
         items = []
         for finding in findings[:8]:
+            cited = [evidence_by_id[evidence_id].label for evidence_id in json.loads(finding.evidence_ids_json) if evidence_id in evidence_by_id]
             if finding.category == "Exported Components":
                 action = "Open the decompiled component and verify intent input validation, authorization, and sensitive data handling."
             elif finding.category == "Deep Links":
@@ -327,7 +369,7 @@ class HtmlReportGenerator:
                 action = "Search for HTTP endpoints and test whether sensitive traffic can occur over cleartext transport."
             else:
                 action = "Review the linked evidence manually and confirm exploitability before treating it as a confirmed vulnerability."
-            items.append(f"<li><strong>{escape(finding.title)}:</strong> {escape(action)}</li>")
+            items.append(f"<li><strong>{escape(finding.title)}:</strong> inspect {escape(', '.join(cited[:3]) or 'the linked evidence')}; {escape(action)}</li>")
         return f"<h2>Manual Validation Plan</h2><ol>{''.join(items)}</ol>"
 
     @staticmethod
@@ -372,7 +414,7 @@ class PdfReportGenerator:
             bottomMargin=0.7 * inch,
             title=f"MASA Report - {job.original_filename}",
         )
-        document.build(self._story(job, evidence, findings, reasoning))
+        document.build(self._story(job, evidence, findings, reasoning, report_dir))
         return report_path
 
     def _story(
@@ -381,6 +423,7 @@ class PdfReportGenerator:
         evidence: list[AnalysisEvidence],
         findings: list[AnalysisFinding],
         reasoning: list[AnalysisReasoning],
+        report_dir: Path,
     ) -> list[object]:
         styles = getSampleStyleSheet()
         title = styles["Title"]
@@ -439,7 +482,7 @@ class PdfReportGenerator:
         evidence_by_id = {item.id: item for item in evidence}
         if findings:
             for finding in findings:
-                story.extend(self._finding_story(finding, evidence_by_id, styles, code))
+                story.extend(self._finding_story(finding, evidence_by_id, styles, code, report_dir))
         else:
             story.append(Paragraph("No evidence-backed findings were generated.", body))
 
@@ -447,12 +490,18 @@ class PdfReportGenerator:
             [
                 Spacer(1, 0.2 * inch),
                 Paragraph("Evidence Register", heading),
-                self._evidence_table(evidence),
-                *self._runtime_evidence_story(evidence, heading, body),
-                *self._dynamic_validation_story(evidence, heading, body),
+                Paragraph(
+                    self._safe_text(
+                        f"Showing first {min(80, len(evidence))} of {len(evidence)} normalized persisted evidence records."
+                    ),
+                    body,
+                ),
+                self._evidence_table(evidence, report_dir),
+                *self._runtime_evidence_story(evidence, heading, body, report_dir),
+                *self._dynamic_validation_story(evidence, heading, body, report_dir),
                 Spacer(1, 0.2 * inch),
                 Paragraph("Manual Validation Plan", heading),
-                *self._validation_plan_story(findings, body),
+                *self._validation_plan_story(findings, body, evidence_by_id),
                 Spacer(1, 0.2 * inch),
                 Paragraph("Structured Risk Summary", heading),
             ]
@@ -480,11 +529,12 @@ class PdfReportGenerator:
         ]
 
     @staticmethod
-    def _validation_plan_story(findings: list[AnalysisFinding], body: ParagraphStyle) -> list[object]:
+    def _validation_plan_story(findings: list[AnalysisFinding], body: ParagraphStyle, evidence_by_id: dict[str, AnalysisEvidence]) -> list[object]:
         if not findings:
             return [Paragraph("No validation actions were generated.", body)]
         actions = []
         for finding in findings[:8]:
+            cited = [evidence_by_id[evidence_id].label for evidence_id in json.loads(finding.evidence_ids_json) if evidence_id in evidence_by_id]
             if finding.category == "Exported Components":
                 action = "Review decompiled component input handling, authorization, and sensitive data access."
             elif finding.category == "Deep Links":
@@ -495,7 +545,7 @@ class PdfReportGenerator:
                 action = "Search for HTTP endpoints and test whether sensitive traffic can use cleartext transport."
             else:
                 action = "Review linked evidence manually and confirm exploitability before treating it as confirmed."
-            actions.append(Paragraph(PdfReportGenerator._safe_text(f"{finding.title}: {action}"), body))
+            actions.append(Paragraph(PdfReportGenerator._safe_text(f"{finding.title}: inspect {', '.join(cited[:3]) or 'linked evidence'}; {action}"), body))
         return actions
 
     def _finding_story(
@@ -504,16 +554,27 @@ class PdfReportGenerator:
         evidence_by_id: dict[str, AnalysisEvidence],
         styles: dict[str, ParagraphStyle],
         code: ParagraphStyle,
+        report_dir: Path,
     ) -> list[object]:
         evidence_ids = [str(item) for item in json.loads(finding.evidence_ids_json)]
         evidence_lines = []
         for evidence_id in evidence_ids:
             evidence = evidence_by_id.get(evidence_id)
             label = evidence.label if evidence else evidence_id
-            evidence_lines.append(f"{evidence_id} - {label}")
+            if evidence is None:
+                evidence_lines.append(f"{evidence_id} - {label}")
+                continue
+            try:
+                payload = json.loads(evidence.value_json)
+            except json.JSONDecodeError:
+                payload = {}
+            context = str(payload.get("matched_context") or "").strip()
+            source = _display_path(evidence.source_path, report_dir.parent)
+            evidence_lines.append(f"{evidence_id} - {label} [source: {source}]" + (f" [context: {context}]" if context else ""))
         story = [
             Paragraph(self._safe_text(finding.title), styles["Heading3"]),
             Paragraph(self._safe_text(f"Severity: {finding.severity.value.upper()} | Category: {finding.category}"), styles["BodyText"]),
+            Paragraph(self._safe_text(f"Assessment: {HtmlReportGenerator._assessment_label(finding)}"), styles["BodyText"]),
             Paragraph(self._safe_text(finding.description), styles["BodyText"]),
             Paragraph(self._safe_text(f"Remediation: {finding.remediation}"), styles["BodyText"]),
             Paragraph(self._safe_text("Evidence: " + "; ".join(evidence_lines)), code),
@@ -563,6 +624,7 @@ class PdfReportGenerator:
         evidence: list[AnalysisEvidence],
         heading: ParagraphStyle,
         body: ParagraphStyle,
+        report_dir: Path,
     ) -> list[object]:
         runtime_evidence = [item for item in evidence if item.category.value == "runtime"]
         if not runtime_evidence:
@@ -573,7 +635,7 @@ class PdfReportGenerator:
                 payload = json.loads(item.value_json)
             except json.JSONDecodeError:
                 payload = {}
-            rows.append([item.evidence_type, str(payload.get("result", "observed")).upper(), item.label, item.source_path])
+            rows.append([item.evidence_type, str(payload.get("result", "observed")).upper(), item.label, _display_path(item.source_path, report_dir.parent)])
         limits_note = []
         limit_items = [item for item in runtime_evidence if item.evidence_type == "extraction_limits"]
         if limit_items:
@@ -588,6 +650,14 @@ class PdfReportGenerator:
                         noteworthy = {key: value for key, value in values.items() if key not in {"max_file_bytes", "max_evidence_per_rule"} and value not in (0, False, [], {})}
                         if noteworthy:
                             details.append(f"{name}: {json.dumps(noteworthy, sort_keys=True)}")
+                normalization = payload.get("normalization")
+                if isinstance(normalization, dict):
+                    details.append(
+                        "evidence normalization: "
+                        f"{normalization.get('raw_count', 0)} raw records -> "
+                        f"{normalization.get('normalized_count', 0)} persisted records; "
+                        f"{normalization.get('cross_tool_duplicates_removed', 0)} cross-tool duplicates removed"
+                    )
             limits_note = [Paragraph(PdfReportGenerator._safe_text("Extraction coverage: " + ("; ".join(details) if details else "no limits reached") + "."), body)]
         return [
             Spacer(1, 0.2 * inch),
@@ -605,6 +675,7 @@ class PdfReportGenerator:
         evidence: list[AnalysisEvidence],
         heading: ParagraphStyle,
         body: ParagraphStyle,
+        report_dir: Path,
     ) -> list[object]:
         validations = [item for item in evidence if item.category.value == "runtime" and item.evidence_type == "dynamic_validation"]
         if not validations:
@@ -622,7 +693,7 @@ class PdfReportGenerator:
             story.append(Paragraph(
                 PdfReportGenerator._safe_text(
                     f"{str(payload.get('result', 'potential')).upper()} - {payload.get('action', item.label)}; "
-                    f"crashes: {len(payload.get('crash_events') or [])}; log: {payload.get('step_log_path', 'not recorded')}"
+                    f"crashes: {len(payload.get('crash_events') or [])}; log: {_display_path(payload.get('step_log_path', 'not recorded'), report_dir.parent)}"
                 ),
                 body,
             ))
@@ -641,7 +712,7 @@ class PdfReportGenerator:
             Paragraph("Not checked: network traffic, file contents, how the app handles input, and native code behavior at runtime.", body),
         ]
 
-    def _evidence_table(self, evidence: list[AnalysisEvidence]) -> Table:
+    def _evidence_table(self, evidence: list[AnalysisEvidence], report_dir: Path) -> Table:
         rows = [["Category", "Type", "Label"]]
         rows.extend([item.category.value, item.evidence_type, item.label] for item in evidence[:80])
         if len(rows) == 1:

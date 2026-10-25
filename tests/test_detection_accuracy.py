@@ -7,9 +7,10 @@ from types import SimpleNamespace
 import unittest
 
 from analysis.code_risk import CodeRiskEvidenceExtractor
-from analysis.evidence import ManifestEvidenceExtractor
+from analysis.evidence import EvidenceItem, ManifestEvidenceExtractor, normalize_evidence_items
+from app.db.base import EvidenceCategory
 from analysis.findings import EvidenceFindingGenerator
-from reports.generator import PdfReportGenerator
+from reports.generator import HtmlReportGenerator, PdfReportGenerator
 
 
 class DetectionAccuracyTests(unittest.TestCase):
@@ -183,6 +184,55 @@ class DetectionAccuracyTests(unittest.TestCase):
     def test_pdf_table_keeps_plain_text_entities_readable(self) -> None:
         table = PdfReportGenerator()._table([["Header"], ["A & B < C > D"]])
         self.assertEqual(table._cellvalues[1][0], "A & B < C > D")
+
+    def test_html_report_redacts_workspace_root_from_paths(self) -> None:
+        evidence = SimpleNamespace(
+            id="e1",
+            category=SimpleNamespace(value="manifest"),
+            evidence_type="manifest_metadata",
+            label="Manifest",
+            source_path="/home/mrvantaroot/Android/MASA/storage/workspaces/job/apktool/AndroidManifest.xml",
+            value_json=json.dumps({}),
+        )
+        job = SimpleNamespace(id="html-test", original_filename="sample.apk", sha256="abc", file_size_bytes=1)
+        with TemporaryDirectory() as temp:
+            output = HtmlReportGenerator().generate(job, [evidence], [], [], Path(temp) / "storage" / "reports")
+            html = output.read_text(encoding="utf-8")
+        self.assertNotIn("/home/mrvantaroot", html)
+        self.assertIn("workspaces/job/apktool/AndroidManifest.xml", html)
+
+    def test_remediation_does_not_embed_raw_evidence_examples(self) -> None:
+        remediation = EvidenceFindingGenerator._grounded_remediation(
+            "raw_sql_query_construction",
+            [],
+            "Use parameterized queries.",
+        )
+        self.assertNotIn("Evidence examples", remediation)
+        self.assertFalse(remediation.endswith(".."))
+
+    def test_cross_tool_secret_duplicates_merge_and_keep_source_references(self) -> None:
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            value = {"matched_value": "AIza123456789012345678901234567890", "line": 121, "confidence": "high"}
+            items = [
+                EvidenceItem(EvidenceCategory.code_secret, "possible_api_key", "possible_api_key in strings.xml:121", value, root / "apktool" / "res/values/strings.xml", "line:121"),
+                EvidenceItem(EvidenceCategory.code_secret, "possible_api_key", "possible_api_key in strings.xml:121", value, root / "jadx" / "resources/res/values/strings.xml", "line:121"),
+            ]
+            normalized, counts = normalize_evidence_items(items)
+        self.assertEqual(len(normalized), 1)
+        self.assertEqual(counts["cross_tool_duplicates_removed"], 1)
+        self.assertEqual({item["tool"] for item in normalized[0].value["source_references"]}, {"apktool", "jadx"})
+
+    def test_component_type_comes_from_manifest_tag_not_class_name(self) -> None:
+        manifest = '''<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="x">
+          <application><receiver android:name="x.TestBroadcastReceiver" android:exported="true" /></application>
+        </manifest>'''
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "AndroidManifest.xml").write_text(manifest, encoding="utf-8")
+            item = next(item for item in ManifestEvidenceExtractor().extract(root) if item.category == EvidenceCategory.component)
+        self.assertEqual(item.value["component_type"], "broadcast_receiver")
+        self.assertEqual(item.value["manifest_tag"], "receiver")
 
     def test_incomplete_extraction_coverage_is_visible(self) -> None:
         item = type("Evidence", (), {

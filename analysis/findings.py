@@ -430,55 +430,21 @@ class EvidenceFindingGenerator:
 
     @staticmethod
     def _grounded_remediation(evidence_type: str, items: list[AnalysisEvidence], base_remediation: str) -> str:
-        examples = []
-        for item in items[:3]:
-            payload = json.loads(item.value_json)
-            matched_context = str(payload.get("matched_context") or "").strip()
-            if matched_context:
-                examples.append(matched_context)
-
-        evidence_note = ". "
-        if examples:
-            evidence_note += "Evidence examples: " + " | ".join(examples[:2]) + "."
-        else:
-            evidence_note += "Review the linked evidence entries for the exact file and line context."
-
         if evidence_type == "cleartext_http_endpoint":
-            return (
-                f"Replace the cleartext endpoints with HTTPS-only URLs and confirm that network security configuration blocks plaintext traffic."
-                f"{evidence_note}"
-            )
+            return "Replace the cleartext endpoints with HTTPS-only URLs and confirm that network security configuration blocks plaintext traffic."
         if evidence_type == "trust_all_ssl":
-            return (
-                f"Remove permissive certificate or hostname trust logic and rely on the platform verifier or pinned trust."
-                f"{evidence_note}"
-            )
+            return "Remove permissive certificate or hostname trust logic and rely on the platform verifier or pinned trust."
         if evidence_type == "weak_crypto_mode":
-            return (
-                f"Use modern authenticated encryption and replace obsolete primitives or modes with approved defaults such as AES-GCM."
-                f"{evidence_note}"
-            )
+            return "Use modern authenticated encryption and replace obsolete primitives or modes with approved defaults such as AES-GCM."
         if evidence_type == "insecure_webview_javascript":
-            return (
-                f"Restrict WebView content origins and keep JavaScript enabled only for trusted, tightly scoped flows."
-                f"{evidence_note}"
-            )
+            return "Restrict WebView content origins and keep JavaScript enabled only for trusted, tightly scoped flows."
         if evidence_type == "insecure_webview_file_access":
-            return (
-                f"Disable file access unless it is strictly required, and isolate any untrusted WebView content from local files."
-                f"{evidence_note}"
-            )
+            return "Disable file access unless it is strictly required, and isolate any untrusted WebView content from local files."
         if evidence_type == "webview_javascript_bridge":
-            return (
-                f"Expose only the minimum bridge surface area, validate all bridge traffic, and verify origin restrictions for WebView content."
-                f"{evidence_note}"
-            )
+            return "Expose only the minimum bridge surface area, validate all bridge traffic, and verify origin restrictions for WebView content."
         if evidence_type == "raw_sql_query_construction":
-            return (
-                f"Use parameterized queries or a vetted ORM path instead of string-concatenated SQL, and verify caller-controlled inputs are not reaching the query."
-                f"{evidence_note}"
-            )
-        return base_remediation + evidence_note
+            return "Use parameterized queries or a vetted ORM path instead of string-concatenated SQL, and verify caller-controlled inputs are not reaching the query."
+        return base_remediation.rstrip(".") + "."
 
     @staticmethod
     def _code_risk_metadata(

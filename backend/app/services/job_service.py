@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from ai.reasoning import DeterministicReasoningEngine, ReasoningResult
 from analysis.code_risk import CodeRiskEvidenceExtractor
 from analysis.decompilation import ApkDecompiler, DecompilationCancelled, DecompilationError, DecompilationResult
-from analysis.evidence import CodeSecretEvidenceExtractor, EvidenceItem, ManifestEvidenceExtractor
+from analysis.evidence import CodeSecretEvidenceExtractor, EvidenceItem, ManifestEvidenceExtractor, normalize_evidence_items
 from analysis.findings import EvidenceFindingGenerator, FindingCandidate
 from analysis.ghidra import GhidraAnalyzer, NativeAnalysisResult, evidence_for_native_analysis
 from app.core.config import Settings
@@ -503,19 +503,21 @@ class JobRunner(_JobStorageHelpers):
         risk_extractor = CodeRiskEvidenceExtractor()
         evidence_items.extend(secret_extractor.extract(decompilation.apktool.output_path, decompilation.jadx.output_path))
         evidence_items.extend(risk_extractor.extract(decompilation.apktool.output_path, decompilation.jadx.output_path))
+        evidence_items.extend(evidence_for_native_analysis(decompilation.ghidra))
         limits_path = decompilation.apktool.output_path.parent / "extraction-limits.json"
         limits = {"code_secret": secret_extractor.limit_metadata, "code_risk": risk_extractor.limit_metadata}
+        normalized, normalization = normalize_evidence_items(evidence_items)
+        limits["normalization"] = normalization
         limits_path.write_text(json.dumps(limits, indent=2, sort_keys=True), encoding="utf-8")
-        evidence_items.append(EvidenceItem(
+        normalized.append(EvidenceItem(
             category=EvidenceCategory.runtime,
             evidence_type="extraction_limits",
             label="Evidence extraction limits (informational)",
-            value={**limits, "note": "Limits are reported for transparency and do not create findings."},
+            value={**limits, "note": "Counts distinguish raw extractor output from normalized persisted evidence."},
             source_path=limits_path,
             source_node="extraction-limits.json",
         ))
-        evidence_items.extend(evidence_for_native_analysis(decompilation.ghidra))
-        return evidence_items
+        return normalized
 
     def _generate_and_record_findings(
         self,

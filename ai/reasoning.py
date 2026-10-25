@@ -80,11 +80,25 @@ class DeterministicReasoningEngine(ReasoningEngine):
             steps=[
                 f"Evidence to inspect: {cited}.",
                 f"Static risk area: {finding.category}.",
-                "Manual validation required: inspect decompiled code and, where appropriate, exercise the component dynamically.",
+                f"Validation focus: {self._validation_focus(finding)}",
                 f"Recommended remediation path: {finding.remediation}",
             ],
             evidence_ids=evidence_ids,
         )
+
+    @staticmethod
+    def _validation_focus(finding: AnalysisFinding) -> str:
+        if finding.category == "Exported Components":
+            return "invoke only the named manifest component and verify authorization, input handling, and sensitive data access"
+        if finding.category == "Deep Links":
+            return "exercise the cited route constraints and verify authorization and input validation"
+        if finding.category == "Code Review":
+            return "inspect the cited source locations and determine whether the candidate is active, reachable, and security-sensitive"
+        if finding.category == "Network Security":
+            return "trace the cited endpoint/configuration into actual transport behavior and test cleartext policy"
+        if finding.category == "WebView":
+            return "identify loaded origins and bridge/file access before treating JavaScript enablement as risky"
+        return "confirm the cited evidence is reachable and security-relevant before treating it as exploitable"
 
     def _correlated_validation_paths(
         self,

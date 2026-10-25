@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from bisect import bisect_right
 from pathlib import Path
 import json
@@ -63,6 +63,65 @@ class EvidenceItem:
     @property
     def value_json(self) -> str:
         return json.dumps(self.value, sort_keys=True)
+
+
+def _normalized_source_path(path: Path) -> str:
+    value = str(path)
+    for marker in ("/apktool/", "/jadx/"):
+        if marker in value:
+            value = value.split(marker, 1)[1]
+            if value.startswith("resources/"):
+                value = value.removeprefix("resources/")
+            return value
+    return value
+
+
+def normalize_evidence_items(items: list[EvidenceItem]) -> tuple[list[EvidenceItem], dict[str, int]]:
+    """Merge equivalent cross-tool secret records while retaining every source."""
+    groups: dict[tuple[object, ...], list[EvidenceItem]] = {}
+    passthrough: list[EvidenceItem] = []
+    for item in items:
+        if item.category != EvidenceCategory.code_secret:
+            passthrough.append(item)
+            continue
+        value = item.value
+        normalized_source = _normalized_source_path(item.source_path)
+        key = (
+            item.evidence_type,
+            value.get("matched_value"),
+            value.get("line"),
+            normalized_source,
+        )
+        groups.setdefault(key, []).append(item)
+
+    normalized: list[EvidenceItem] = []
+    duplicates_removed = 0
+    for item in items:
+        if item.category != EvidenceCategory.code_secret:
+            normalized.append(item)
+            continue
+        value = item.value
+        normalized_source = _normalized_source_path(item.source_path)
+        group = groups[(item.evidence_type, value.get("matched_value"), value.get("line"), normalized_source)]
+        if group[0] is not item:
+            continue
+        tools = {"jadx" if "/jadx/" in str(candidate.source_path) else "apktool" for candidate in group}
+        if len(tools) < 2:
+            normalized.append(item)
+            continue
+        references = [
+            {
+                "label": candidate.label,
+                "source_path": str(candidate.source_path),
+                "source_node": candidate.source_node,
+                "tool": "jadx" if "/jadx/" in str(candidate.source_path) else "apktool",
+            }
+            for candidate in group
+        ]
+        merged_value = {**value, "source_references": references, "source_tools": sorted(tools)}
+        normalized.append(replace(item, value=merged_value, label=f"{item.evidence_type} in {Path(normalized_source).name}:{value.get('line')} (cross-tool sources: {', '.join(sorted(tools))})"))
+        duplicates_removed += len(group) - 1
+    return normalized, {"raw_count": len(items), "normalized_count": len(normalized), "cross_tool_duplicates_removed": duplicates_removed}
 
 
 class ManifestEvidenceExtractor:
@@ -195,6 +254,7 @@ class ManifestEvidenceExtractor:
                         value={
                             "name": name,
                             "component_type": component_type,
+                            "manifest_tag": tag,
                             "exported": exported,
                             "exported_effective": exported_effective,
                             "exported_implicit": exported_implicit,
