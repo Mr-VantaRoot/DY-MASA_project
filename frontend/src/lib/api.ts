@@ -6,6 +6,8 @@ export const API_BASE_URL =
     ? configuredApiBase.replace(/\/$/, "")
     : "http://127.0.0.1:8000/api";
 
+const terminalToken = (import.meta.env.VITE_TERMINAL_TOKEN as string | undefined)?.trim();
+
 export function formatApiError(error: unknown, fallback: string): string {
   if (error instanceof TypeError) {
     return "Cannot reach the backend API. Start the backend on http://127.0.0.1:8000 and confirm /api/health responds.";
@@ -59,7 +61,10 @@ export async function fetchHealth() {
 export async function runTerminalCommand(command: string, cwd?: string, previousCwd?: string) {
   const response = await fetch(`${API_BASE_URL}/terminal/run`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(terminalToken ? { "X-Terminal-Token": terminalToken } : {}),
+    },
     body: JSON.stringify({ command, cwd, previous_cwd: previousCwd }),
   });
   const payload = await response.json().catch(() => ({}));
