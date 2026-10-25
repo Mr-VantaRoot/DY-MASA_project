@@ -179,11 +179,11 @@ export function DynamicPage() {
         )}
       </div>
 
-      <div className="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <div className="bg-card border border-border rounded-xl p-5">
+      <div className="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-6 xl:h-[clamp(320px,45vh,480px)] xl:items-stretch">
+        <div className="bg-card border border-border rounded-xl p-5 flex min-h-0 flex-col">
           <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wide mb-4">Runtime Evidence</h2>
           {evidence.length === 0 ? <p className="text-sm text-muted-foreground">Runtime evidence will appear after DY-MASA completes.</p> : (
-            <div className="space-y-3 max-h-[480px] overflow-y-auto">
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
               {evidence.map((item) => <details key={item.id} className="border border-border rounded-lg p-3">
                 <summary className="cursor-pointer text-sm font-semibold">{item.label}</summary>
                 <p className="text-xs text-muted-foreground mt-2">{item.evidence_type}</p>
@@ -193,13 +193,13 @@ export function DynamicPage() {
           )}
         </div>
 
-        <div className="bg-card border border-border rounded-xl p-5">
+        <div className="bg-card border border-border rounded-xl p-5 flex min-h-0 flex-col">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wide">Runtime Artifacts</h2>
             {activeJob && <a href="/reports" className="text-xs text-accent hover:underline">Open reports</a>}
           </div>
           {artifacts.length === 0 ? <p className="text-sm text-muted-foreground">Logs, screenshots, and validation files will appear after a run.</p> : (
-            <div className="space-y-3">
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
               {artifacts.map((artifact) => {
                 const image = artifact.path.toLowerCase().endsWith(".png");
                 return <div key={artifact.id} className="flex items-center justify-between gap-3 border border-border rounded-lg p-3">
