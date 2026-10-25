@@ -73,6 +73,7 @@ class Settings(BaseSettings):
     ghidra_headless_path: Path | None = None
     ghidra_timeout_seconds: int = 900
     ghidra_library_timeout_seconds: int = 300
+    ghidra_auto_extend_timeout: bool = True
 
     storage_root: Path = PROJECT_ROOT / "storage"
     upload_dir: Path = PROJECT_ROOT / "storage" / "uploads"
