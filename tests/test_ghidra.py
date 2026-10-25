@@ -73,7 +73,8 @@ class GhidraTests(unittest.TestCase):
             self.assertEqual(len(result.library_results), 2)
             self.assertEqual([event["status"] for event in events], ["running", "completed", "running", "completed"])
             self.assertIn("-analysisTimeoutPerFile", popen.call_args.args[0])
-            self.assertTrue((root / "ghidra" / "arch0-liba.log").exists())
+            self.assertTrue(next((root / "ghidra").glob("01-arch0-liba-*.log")).exists())
+            self.assertNotEqual(popen.call_args_list[0].args[0][2], popen.call_args_list[1].args[0][2])
 
     def test_missing_executable_is_skipped_with_libraries_retained(self):
         with TemporaryDirectory() as temp:
@@ -137,6 +138,65 @@ class GhidraTests(unittest.TestCase):
             self.assertEqual(result.status, "partial")
             self.assertEqual(len(result.library_results), 3)
             self.assertEqual(result.library_results[-1]["status"], "completed")
+
+    def test_overall_budget_skips_unstarted_libraries_instead_of_calling_them_timeouts(self):
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            apktool = self.libraries(root, ("liba.so", "libb.so"))
+            headless = root / "analyzeHeadless"
+            headless.touch()
+            analyzer = GhidraAnalyzer(self.settings(headless, overall=2, per_library=10))
+            clock = iter((0.0, 0.0, 0.5, 0.1, 1.9, 1.95))
+            with patch("analysis.ghidra.time.monotonic", side_effect=lambda: next(clock)), patch.object(
+                analyzer, "_run_library", return_value=("completed", 0, "", "", "Ghidra completed successfully.")
+            ) as run_library:
+                result = analyzer.run(apktool, root)
+            self.assertEqual([item["status"] for item in result.library_results], ["completed", "skipped"])
+            self.assertEqual([item["started"] for item in result.library_results], [True, False])
+            self.assertEqual(run_library.call_count, 1)
+            self.assertIn("1 completed", result.detail)
+            self.assertIn("1 skipped", result.detail)
+
+    def test_timeout_values_fall_back_to_safe_defaults(self):
+        self.assertEqual(GhidraAnalyzer._positive_timeout(0, 300), 300)
+        self.assertEqual(GhidraAnalyzer._positive_timeout("invalid", 300), 300)
+        self.assertEqual(GhidraAnalyzer._positive_timeout(float("inf"), 300), 300)
+
+    def test_timeout_then_next_library_has_independent_attempt(self):
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            apktool = self.libraries(root, ("liba.so", "libb.so"))
+            headless = root / "analyzeHeadless"
+            headless.touch()
+            analyzer = GhidraAnalyzer(self.settings(headless, overall=30, per_library=1))
+            with patch.object(
+                analyzer,
+                "_run_library",
+                side_effect=[
+                    ("timed_out", -1, "", "", "Per-library timeout exceeded"),
+                    ("completed", 0, "", "", "Ghidra completed successfully."),
+                ],
+            ) as run_library:
+                result = analyzer.run(apktool, root)
+            self.assertEqual([item["status"] for item in result.library_results], ["timed_out", "completed"])
+            self.assertEqual([item["started"] for item in result.library_results], [True, True])
+            self.assertEqual(run_library.call_count, 2)
+            self.assertIn("1 timed out", result.detail)
+            self.assertIn("1 completed", result.detail)
+
+    def test_ghidra_reported_analysis_timeout_is_not_success(self):
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            apktool = self.libraries(root, ("liba.so",))
+            headless = root / "analyzeHeadless"
+            headless.touch()
+            analyzer = GhidraAnalyzer(self.settings(headless, overall=30, per_library=30))
+            process = FakeProcess(returncode=0)
+            with patch("analysis.ghidra.subprocess.Popen", return_value=process), patch.object(
+                process, "communicate", return_value=("ERROR REPORT: Analysis timed out at 30 seconds", "")
+            ):
+                result = analyzer.run(apktool, root)
+            self.assertEqual(result.library_results[0]["status"], "timed_out")
 
 
 if __name__ == "__main__":

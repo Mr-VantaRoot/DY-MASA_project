@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import json
 import hashlib
+import math
 import os
 import signal
 import subprocess
@@ -74,7 +75,9 @@ class GhidraAnalyzer:
         last_exit_code = 0
         library_results: list[dict[str, object]] = []
         failed = False
-        deadline = time.monotonic() + self._settings.ghidra_timeout_seconds
+        overall_timeout = self._positive_timeout(getattr(self._settings, "ghidra_timeout_seconds", 900), 900)
+        per_library_limit = self._positive_timeout(getattr(self._settings, "ghidra_library_timeout_seconds", 300), 300)
+        deadline = time.monotonic() + overall_timeout
 
         for index, library in enumerate(native_libraries, start=1):
             size_bytes = library.stat().st_size
@@ -88,48 +91,71 @@ class GhidraAnalyzer:
                 "total": len(native_libraries),
             }
             if cancel_event and cancel_event.is_set():
-                detail = "Ghidra analysis was cancelled."
-                self._write_log(log_path, "\n".join(log_parts + [detail]))
-                return NativeAnalysisResult("ghidra", "cancelled", output_path, log_path, -2, native_libraries, detail, tuple(library_results))
-            self._notify(progress_callback, {**event_base, "status": "running", "elapsed_seconds": 0.0})
-            remaining = int(deadline - time.monotonic())
-            if remaining <= 0:
-                result = {**event_base, "status": "skipped", "exit_code": None, "elapsed_seconds": 0.0, "detail": "Overall Ghidra timeout was exhausted before this library started."}
+                result = {**event_base, "status": "cancelled", "started": False, "exit_code": -2, "elapsed_seconds": 0.0, "detail": "Cancellation was requested before this library started."}
                 library_results.append(result)
                 self._notify(progress_callback, result)
-                continue
-            per_library_timeout = max(1, int(getattr(self._settings, "ghidra_library_timeout_seconds", remaining)))
-            timeout = min(remaining, per_library_timeout)
+                pending = self._unstarted_results(native_libraries[index:], "Not started because Ghidra analysis was cancelled.", index + 1, progress_callback)
+                library_results.extend(pending)
+                break
+            remaining = deadline - time.monotonic()
+            if remaining < 1.0:
+                result = {**event_base, "status": "skipped", "started": False, "exit_code": None, "elapsed_seconds": 0.0, "detail": "Overall Ghidra timeout was exhausted before this library started."}
+                library_results.append(result)
+                self._notify(progress_callback, result)
+                pending = self._unstarted_results(native_libraries[index:], "Not started because the overall Ghidra budget expired.", index + 1, progress_callback)
+                library_results.extend(pending)
+                break
+            timeout = min(per_library_limit, remaining)
+            library_hash = str(event_base["sha256"])
+            project_name = f"masa-native-{index:02d}-{library_hash[:12]}"
+            library_output_path = project_path / f"{project_name}.rep"
+            self._notify(progress_callback, {**event_base, "status": "running", "started": True, "output_path": str(library_output_path), "elapsed_seconds": 0.0})
             launcher = ["cmd.exe", "/c", str(headless)] if headless.suffix.lower() in {".bat", ".cmd"} else [str(headless)]
             command = launcher + [
                 str(project_path),
-                "masa-native",
-                "-analysisTimeoutPerFile",
-                str(timeout),
+                project_name,
                 "-import",
                 str(library),
                 "-overwrite",
+                "-analysisTimeoutPerFile",
+                str(max(1, math.ceil(timeout))),
             ]
             status, exit_code, stdout, stderr, reason = self._run_library(command, timeout, cancel_event)
             elapsed = round(time.monotonic() - started, 3)
             last_exit_code = exit_code if exit_code not in (None, 0) else last_exit_code
             if status != "completed":
                 failed = True
-            result = {**event_base, "status": status, "exit_code": exit_code, "elapsed_seconds": elapsed, "detail": reason}
+            result = {
+                **event_base,
+                "status": status,
+                "started": True,
+                "output_path": str(library_output_path),
+                "partial": library_output_path.exists() and status in {"timed_out", "failed"},
+                "exit_code": exit_code,
+                "elapsed_seconds": elapsed,
+                "detail": reason,
+            }
             library_results.append(result)
             log_parts.extend([f"command={' '.join(command)}", f"library={library}", f"status={status}", f"elapsed_seconds={elapsed}", f"exit_code={exit_code}", stdout[-4000:], stderr[-4000:], reason])
             self._write_log(log_path, "\n".join(log_parts))
-            self._write_log(output_path / f"{library.parent.name}-{library.stem}.log", "\n".join([f"command={' '.join(command)}", f"status={status}", f"elapsed_seconds={elapsed}", stdout, stderr, reason]))
+            self._write_log(output_path / f"{index:02d}-{library.parent.name}-{library.stem}-{library_hash[:12]}.log", "\n".join([f"command={' '.join(command)}", f"status={status}", f"elapsed_seconds={elapsed}", stdout, stderr, reason]))
             self._notify(progress_callback, result)
             if status == "cancelled":
                 detail = "Ghidra analysis was cancelled; active process was terminated safely."
+                pending = self._unstarted_results(native_libraries[index:], "Not started because Ghidra analysis was cancelled.", index + 1, progress_callback)
+                library_results.extend(pending)
                 return NativeAnalysisResult("ghidra", "cancelled", output_path, log_path, -2, native_libraries, detail, tuple(library_results))
 
         completed_count = sum(item["status"] == "completed" for item in library_results)
         timed_out_count = sum(item["status"] == "timed_out" for item in library_results)
         failed_count = sum(item["status"] == "failed" for item in library_results)
         skipped_count = sum(item["status"] == "skipped" for item in library_results)
-        if completed_count == len(native_libraries):
+        cancelled_count = sum(item["status"] == "cancelled" for item in library_results)
+        partial_count = sum(bool(item.get("partial")) or item["status"] == "partial" for item in library_results)
+        attempted_count = sum(bool(item.get("started")) for item in library_results)
+        if cancelled_count:
+            status = "cancelled"
+        elif completed_count == len(native_libraries):
             status = "completed"
         elif completed_count == 0 and skipped_count == len(native_libraries):
             status = "skipped"
@@ -140,11 +166,13 @@ class GhidraAnalyzer:
         detail = (
             f"Ghidra discovered {len(native_libraries)} native library file(s): "
             f"{completed_count} completed, {timed_out_count} timed out, {failed_count} failed, "
-            f"{skipped_count} skipped. Results are static analysis evidence, not proof of exploitability."
+            f"{skipped_count} skipped, {cancelled_count} cancelled, {partial_count} partial; "
+            f"{attempted_count} started. Results are static analysis evidence, not proof of exploitability."
         )
         log_parts.append(detail)
         self._write_log(log_path, "\n".join(log_parts))
-        return NativeAnalysisResult("ghidra", status, output_path, log_path, 0 if not failed else last_exit_code, native_libraries, detail, tuple(library_results))
+        final_exit_code = -2 if cancelled_count else (0 if not failed else last_exit_code)
+        return NativeAnalysisResult("ghidra", status, output_path, log_path, final_exit_code, native_libraries, detail, tuple(library_results))
 
     @staticmethod
     def _sha256(path: Path) -> str:
@@ -154,6 +182,30 @@ class GhidraAnalyzer:
                 digest.update(chunk)
         return digest.hexdigest()
 
+    @staticmethod
+    def _positive_timeout(value: object, default: float) -> float:
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            return default
+        return parsed if math.isfinite(parsed) and parsed > 0 else default
+
+    def _unstarted_results(
+        self,
+        libraries: tuple[Path, ...],
+        detail: str,
+        start_index: int,
+        progress_callback: LibraryEvent | None,
+    ) -> list[dict[str, object]]:
+        results = []
+        total = start_index + len(libraries) - 1
+        for offset, library in enumerate(libraries):
+            result = self._library_result(library, "skipped", detail)
+            result.update({"index": start_index + offset, "total": total})
+            results.append(result)
+            self._notify(progress_callback, result)
+        return results
+
     def _library_result(self, library: Path, status: str, detail: str) -> dict[str, object]:
         return {
             "library": library.name,
@@ -161,6 +213,9 @@ class GhidraAnalyzer:
             "sha256": self._sha256(library) if library.exists() else None,
             "size_bytes": library.stat().st_size if library.exists() else None,
             "status": status,
+            "started": False,
+            "output_path": None,
+            "partial": False,
             "exit_code": None,
             "elapsed_seconds": 0.0,
             "detail": detail,
@@ -227,6 +282,8 @@ class GhidraAnalyzer:
                 continue
         stdout, stderr = process.communicate()
         exit_code = process.returncode
+        if "Analysis timed out" in stdout or "Analysis timed out" in stderr:
+            return "timed_out", exit_code, stdout or "", stderr or "", "Ghidra reported that per-file analysis timed out; imported output was preserved when available."
         if exit_code == 0:
             return "completed", exit_code, stdout or "", stderr or "", "Ghidra completed successfully."
         return "failed", exit_code, stdout or "", stderr or "", f"Ghidra returned exit code {exit_code}."
@@ -258,11 +315,13 @@ class GhidraAnalyzer:
 def evidence_for_native_analysis(result: NativeAnalysisResult) -> list[EvidenceItem]:
     coverage = {
         "discovered": len(result.native_libraries),
+        "attempted": sum(bool(item.get("started")) for item in result.library_results),
         "completed": sum(item.get("status") == "completed" for item in result.library_results),
         "timed_out": sum(item.get("status") == "timed_out" for item in result.library_results),
         "failed": sum(item.get("status") == "failed" for item in result.library_results),
         "skipped": sum(item.get("status") == "skipped" for item in result.library_results),
-        "partial": sum(item.get("status") == "partial" for item in result.library_results),
+        "cancelled": sum(item.get("status") == "cancelled" for item in result.library_results),
+        "partial": sum(bool(item.get("partial")) or item.get("status") == "partial" for item in result.library_results),
     }
     evidence = [
         EvidenceItem(

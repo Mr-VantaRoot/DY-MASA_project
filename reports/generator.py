@@ -165,13 +165,18 @@ class HtmlReportGenerator:
             if coverage.get("status_unavailable"):
                 native_note = f"<li>Native analysis discovered {escape(str(coverage.get('discovered', 0)))} libraries, but per-library outcomes were not recorded in this historical evidence; coverage is incomplete and not a clean assessment.</li>"
             else:
+                discovered = int(coverage.get("discovered", native.get("library_count", 0)) or 0)
+                completed = int(coverage.get("completed", 0) or 0)
+                coverage_suffix = "all discovered libraries completed." if completed == discovered else "incomplete coverage is not a clean assessment."
                 native_note = (
-                    f"<li>Native analysis coverage: {escape(str(coverage.get('completed', 0)))} completed, "
+                    f"<li>Native analysis coverage: {escape(str(coverage.get('attempted', 0)))} attempted, "
+                    f"{escape(str(coverage.get('completed', 0)))} completed, "
                     f"{escape(str(coverage.get('timed_out', 0)))} timed out, "
                     f"{escape(str(coverage.get('failed', 0)))} failed, "
-                    f"{escape(str(coverage.get('skipped', 0)))} skipped out of "
-                    f"{escape(str(coverage.get('discovered', native.get('library_count', 0))))} discovered; "
-                    "incomplete coverage is not a clean assessment.</li>"
+                    f"{escape(str(coverage.get('skipped', 0)))} skipped, "
+                    f"{escape(str(coverage.get('cancelled', 0)))} cancelled, "
+                    f"{escape(str(coverage.get('partial', 0)))} partial out of "
+                    f"{escape(str(discovered))} discovered; {escape(coverage_suffix)}</li>"
                 )
         return """
 <h2>Scope and Limitations</h2>
@@ -595,12 +600,15 @@ class PdfReportGenerator:
         if coverage.get("status_unavailable"):
             text = f"Native analysis discovered {coverage.get('discovered', 0)} libraries, but per-library outcomes were not recorded in this historical evidence. Incomplete native coverage is not a clean assessment."
         else:
+            discovered = int(coverage.get("discovered", payload.get("library_count", 0)) or 0)
+            completed = int(coverage.get("completed", 0) or 0)
+            coverage_suffix = "All discovered libraries completed." if completed == discovered else "Incomplete native coverage is not a clean assessment."
             text = (
                 "Native analysis coverage: "
-                f"{coverage.get('completed', 0)} completed, {coverage.get('timed_out', 0)} timed out, "
-                f"{coverage.get('failed', 0)} failed, {coverage.get('skipped', 0)} skipped of "
-                f"{coverage.get('discovered', payload.get('library_count', 0))} discovered. "
-                "Incomplete native coverage is not a clean assessment."
+                f"{coverage.get('attempted', 0)} attempted, {coverage.get('completed', 0)} completed, "
+                f"{coverage.get('timed_out', 0)} timed out, {coverage.get('failed', 0)} failed, "
+                f"{coverage.get('skipped', 0)} skipped, {coverage.get('cancelled', 0)} cancelled, "
+                f"{coverage.get('partial', 0)} partial of {discovered} discovered. {coverage_suffix}"
             )
         return [Paragraph("Native Analysis Coverage", heading), Paragraph(PdfReportGenerator._safe_text(text), body)]
 
