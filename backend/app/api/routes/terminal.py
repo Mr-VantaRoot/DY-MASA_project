@@ -135,7 +135,7 @@ class LocalTerminal:
                     ),
                 )
             if command_name in {"python", "python3", "perl", "ruby", "node"} and (
-                index + 1 >= len(tokens) or tokens[index + 1] in operators or any(
+                index + 1 >= len(tokens) or (tokens[index + 1] and all(char in ";&|" for char in tokens[index + 1])) or any(
                     flag.lower() in self.INTERPRETER_CODE_FLAGS for flag in tokens[index + 1 :]
                 )
             ):
