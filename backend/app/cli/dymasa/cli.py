@@ -39,6 +39,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-color", action="store_true", help="Disable terminal styling.")
     subparsers = parser.add_subparsers(dest="command")
     subparsers.add_parser("check", help="Check configuration and available dependencies.")
+    analyze = subparsers.add_parser("analyze", help="Analyze one authorized APK and monitor its job.")
+    analyze.add_argument("apk_path", type=Path)
+    analyze.add_argument("--poll-interval", type=float, default=1.0)
     subparsers.add_parser("jobs", help="List existing analysis jobs.")
     jobs_show = subparsers.add_parser("job", help="Show one job and its stored results.")
     jobs_show.add_argument("job_id")
@@ -182,6 +185,11 @@ def main(argv: list[str] | None = None) -> int:
     output = Output(quiet=args.quiet)
     if args.command == "check":
         return check(output)
+    if args.command == "analyze":
+        from .runner import run_analysis
+        from app.core.config import get_settings
+
+        return run_analysis(args.apk_path, get_settings(), output, args.poll_interval)
     if args.command in {"jobs", "job", "findings", "evidence", "reports"}:
         try:
             return _read_command(args, output)
