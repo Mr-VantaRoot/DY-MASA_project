@@ -1,0 +1,56 @@
+"""Database environment selection used before importing SQLAlchemy modules.
+
+This mirrors ``work/start-backend.sh`` without importing the application engine.
+"""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+import shutil
+import subprocess
+
+
+def project_root() -> Path:
+    return Path(__file__).resolve().parents[4]
+
+
+def sqlite_url(root: Path | None = None) -> str:
+    database_path = (root or project_root()) / "storage" / "masa.sqlite3"
+    return f"sqlite:///{database_path.resolve()}"
+
+
+def postgres_is_ready() -> bool:
+    """Return whether the configured PostgreSQL host accepts readiness checks."""
+
+    executable = shutil.which("pg_isready")
+    if not executable:
+        return False
+    try:
+        result = subprocess.run(
+            [executable, "-q"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=4,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0
+
+
+def configure_database_environment(root: Path | None = None) -> str:
+    """Select the same database policy as the backend startup script.
+
+    The returned URL is set before any module that creates the SQLAlchemy engine
+    is imported. An explicitly configured PostgreSQL URL is retained when the
+    configured PostgreSQL service is ready; otherwise the canonical project
+    SQLite database is selected.
+    """
+
+    if postgres_is_ready():
+        return os.environ.get("MOBILE_PENTEST_DATABASE_URL", "postgresql (configured)")
+    fallback = sqlite_url(root)
+    os.environ["MOBILE_PENTEST_DATABASE_URL"] = fallback
+    return fallback

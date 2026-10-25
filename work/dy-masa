@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$PROJECT_ROOT"
+export PYTHONPATH=".:backend${PYTHONPATH:+:$PYTHONPATH}"
+
+PYTHON_BIN="${DY_MASA_PYTHON:-$PROJECT_ROOT/myenv/bin/python}"
+if [[ ! -x "$PYTHON_BIN" ]]; then
+  PYTHON_BIN="python"
+fi
+
+exec "$PYTHON_BIN" -m app.cli.dymasa "$@"
