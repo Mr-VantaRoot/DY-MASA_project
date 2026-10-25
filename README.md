@@ -499,7 +499,7 @@ Routes below are mounted under `/api`, except the interactive documentation at `
 | `GET /api/dynamic/status` | Check Android device/emulator status |
 | `GET /api/dynamic/storage` | Read device storage totals and optional media-size estimates |
 | `POST /api/jobs/{id}/dynamic/start` | Start runtime validation |
-| `GET /api/jobs/{id}/dynamic/events` | List stored runtime-stage events |
+| `GET /api/jobs/{id}/dynamic/events` | List persisted runtime-stage records (not an SSE stream) |
 | `GET /api/jobs/{id}/dynamic/evidence` | Read runtime evidence |
 | `POST /api/terminal/run` | Run a command through the optional terminal, only when enabled |
 
