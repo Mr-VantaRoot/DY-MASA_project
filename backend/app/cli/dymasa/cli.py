@@ -43,7 +43,8 @@ def _parser() -> argparse.ArgumentParser:
     analyze = subparsers.add_parser("analyze", help="Analyze one authorized APK and monitor its job.")
     analyze.add_argument("apk_path", type=Path)
     analyze.add_argument("--poll-interval", type=float, default=1.0)
-    subparsers.add_parser("jobs", help="List existing analysis jobs.")
+    jobs = subparsers.add_parser("jobs", help="List existing analysis jobs.")
+    jobs.add_argument("--limit", type=int, help="Optional display limit; history is unlimited by default.")
     jobs_show = subparsers.add_parser("job", help="Show one job and its stored results.")
     jobs_show.add_argument("job_id")
     findings = subparsers.add_parser("findings", help="List stored findings.")
@@ -132,7 +133,7 @@ def _read_command(args, output: Output) -> int:
         output.print(f"Findings: {totals['findings']}  Evidence: {totals['evidence']}  Reports: {totals['reports']}")
         return 0
     if args.command == "jobs":
-        jobs = _with_session(read.list_jobs)
+        jobs = _with_session(lambda db: read.list_jobs(db, args.limit))
         if not jobs:
             output.print("No analysis jobs found.")
         for job in jobs:

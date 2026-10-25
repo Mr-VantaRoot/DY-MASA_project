@@ -18,8 +18,11 @@ from app.db.base import (
 )
 
 
-def list_jobs(db: Any, limit: int = 50) -> list[AnalysisJob]:
-    return list(db.scalars(select(AnalysisJob).order_by(AnalysisJob.created_at.desc()).limit(limit)).all())
+def list_jobs(db: Any, limit: int | None = None) -> list[AnalysisJob]:
+    query = select(AnalysisJob).order_by(AnalysisJob.created_at.desc())
+    if limit is not None:
+        query = query.limit(limit)
+    return list(db.scalars(query).all())
 
 
 def get_job(db: Any, job_id: str) -> AnalysisJob:
