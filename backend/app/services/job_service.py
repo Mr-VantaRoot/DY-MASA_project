@@ -458,7 +458,22 @@ class JobRunner(_JobStorageHelpers):
         self._mark(db, job, AnalysisJobStatus.running, 96, "Running optional Ghidra native analysis")
         record_job_stage(job, "ghidra_analysis", "running", "Ghidra native analysis running", "Inspecting embedded native libraries when available")
         emit_job_event(job.id, "ghidra_analysis", "running", "Ghidra native analysis running", "Inspecting embedded native libraries when available", db=db)
-        ghidra_result = GhidraAnalyzer(self._settings).run(apktool_result.output_path, workspace_path, cancel_event)
+        def ghidra_progress(event: dict[str, object]) -> None:
+            library = str(event.get("library", "native library"))
+            state = str(event.get("status", "unknown"))
+            detail = (
+                f"{library}: {state}; size={event.get('size_bytes')} bytes; "
+                f"elapsed={event.get('elapsed_seconds', 0)}s"
+            )
+            job.current_step = f"Ghidra {state}: {library}"
+            job.progress = min(97, 96 + int((int(event.get("index", 1)) / max(1, int(event.get("total", 1)))) * 2))
+            db.commit()
+            record_job_stage(job, "ghidra_library", state, f"Ghidra library {state}", detail)
+            emit_job_event(job.id, "ghidra_library", state, f"Ghidra library {state}: {library}", detail, db=db)
+
+        ghidra_result = GhidraAnalyzer(self._settings).run(
+            apktool_result.output_path, workspace_path, cancel_event, progress_callback=ghidra_progress
+        )
         summary_path = GhidraAnalyzer.write_summary(ghidra_result)
         self._record_analysis_artifacts(db, job, ghidra_result, summary_path)
         stage_status = "completed" if ghidra_result.status in {"completed", "skipped"} else "failed"
