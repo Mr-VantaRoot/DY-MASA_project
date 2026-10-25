@@ -107,6 +107,24 @@ def list_reports(db: Any, job_id: str | None = None) -> list[AnalysisReport]:
     return list(db.scalars(query).all())
 
 
+def list_dynamic_stages(db: Any, job_id: str) -> list[AnalysisJobStage]:
+    query = (
+        select(AnalysisJobStage)
+        .where(AnalysisJobStage.job_id == job_id, AnalysisJobStage.stage.like("dynamic_%"))
+        .order_by(AnalysisJobStage.created_at.asc())
+    )
+    return list(db.scalars(query).all())
+
+
+def list_runtime_evidence(db: Any, job_id: str) -> list[AnalysisEvidence]:
+    query = (
+        select(AnalysisEvidence)
+        .where(AnalysisEvidence.job_id == job_id, AnalysisEvidence.category == "runtime")
+        .order_by(AnalysisEvidence.created_at.asc())
+    )
+    return list(db.scalars(query).all())
+
+
 def report_path(path: str, storage_root: Path) -> tuple[str, bool]:
     """Return a readable report path and existence without exposing escapes."""
 

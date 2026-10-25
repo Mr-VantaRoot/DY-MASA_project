@@ -10,6 +10,7 @@ from app.db.session import get_db
 from app.schemas.jobs import AnalysisEvidenceListResponse, AnalysisEvidenceResponse, AnalysisJobStageListResponse, AnalysisJobStageResponse
 from app.services.job_events import emit_job_event
 from app.services.job_service import JobService, submit_dynamic_job
+from app.services.dynamic_service import DynamicStartError, start_dynamic_run
 from dynamic.emulator.manager import EmulatorManager, EmulatorStatus
 from dynamic.runtime.orchestrator import DynamicAnalysisError, DynamicRuntimeOrchestrator
 
@@ -115,43 +116,10 @@ def start_dynamic_analysis(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> dict[str, str]:
-    job = JobService(db, settings).get_job(job_id)
-    if job is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis job not found.")
-    if not job.sha256:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Run static analysis first; package metadata is required before DY-MASA can launch the APK.")
-
-    active_run = (
-        db.query(AnalysisJobStage)
-        .filter(
-            AnalysisJobStage.job_id == job_id,
-            AnalysisJobStage.stage == "dynamic_run",
-            AnalysisJobStage.status.in_(["running", "queued"]),
-        )
-        .first()
-    )
-    if active_run is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="A DY-MASA analysis is already running for this job.",
-        )
-
-    run_stage = AnalysisJobStage(
-        job_id=job.id,
-        stage="dynamic_run",
-        status="running",
-        message="DY-MASA analysis queued",
-        detail="Runtime analysis has been accepted and is starting.",
-    )
-    db.add(run_stage)
-    db.commit()
-    db.refresh(run_stage)
-    if not submit_dynamic_job(settings, job_id, run_stage.id):
-        run_stage.status = "queued"
-        run_stage.message = "DY-MASA analysis queued"
-        run_stage.detail = "Waiting for an available analysis worker."
-        db.commit()
-    return {"status": "accepted", "job_id": job_id}
+    try:
+        return start_dynamic_run(db, settings, job_id, submitter=submit_dynamic_job)
+    except DynamicStartError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
 @router.get("/jobs/{job_id}/dynamic/events", response_model=AnalysisJobStageListResponse)

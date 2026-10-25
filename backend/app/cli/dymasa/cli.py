@@ -52,6 +52,15 @@ def _parser() -> argparse.ArgumentParser:
     evidence.add_argument("--job-id")
     reports = subparsers.add_parser("reports", help="List stored reports.")
     reports.add_argument("--job-id")
+    dynamic = subparsers.add_parser("dynamic", help="Inspect or start safe dynamic analysis.")
+    dynamic_subparsers = dynamic.add_subparsers(dest="dynamic_command")
+    dynamic_subparsers.add_parser("status", help="Show ADB/emulator status.")
+    dynamic_start = dynamic_subparsers.add_parser("start", help="Start dynamic analysis for a completed static job.")
+    dynamic_start.add_argument("job_id")
+    dynamic_events = dynamic_subparsers.add_parser("events", help="Show dynamic stages for a job.")
+    dynamic_events.add_argument("job_id")
+    dynamic_evidence = dynamic_subparsers.add_parser("evidence", help="Show runtime evidence for a job.")
+    dynamic_evidence.add_argument("job_id")
     return parser
 
 
@@ -160,6 +169,65 @@ def _read_command(args, output: Output) -> int:
     return 2
 
 
+def _dynamic_command(args, output: Output) -> int:
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    if args.dynamic_command == "status":
+        from dynamic.emulator.manager import EmulatorManager
+
+        manager = EmulatorManager(
+            sdk_path=settings.android_sdk_path,
+            adb_path=settings.adb_path,
+            emulator_path=settings.emulator_path,
+            avd_name=settings.avd_name,
+            boot_timeout_seconds=settings.emulator_boot_timeout_seconds,
+            status_timeout_seconds=settings.dynamic_status_timeout_seconds,
+            avd_home=settings.android_avd_home,
+            device_serial=settings.dynamic_device_serial,
+            allow_physical_device=settings.dynamic_allow_physical_device,
+        )
+        status = manager.status()
+        output.print(f"ADB available: {status.adb_available}")
+        output.print(f"Emulator available: {status.emulator_available}")
+        output.print(f"Ready device: {status.ready_device or 'none'}")
+        output.print(f"Android: {status.android_version or 'unknown'}")
+        output.print(f"Model: {status.device_model or 'unknown'}")
+        for device in status.devices:
+            output.print(f"Device: {device['serial']} ({device['state']})")
+        return 0
+    if args.dynamic_command == "start":
+        from app.services.dynamic_service import start_dynamic_run
+
+        try:
+            result = _with_session(lambda db: start_dynamic_run(db, settings, args.job_id))
+        except ValueError as exc:
+            output.print(f"Dynamic analysis not started: {exc}")
+            return 1
+        output.print(f"Dynamic analysis accepted for job {result['job_id']}.")
+        return 0
+    if args.dynamic_command in {"events", "evidence"}:
+        from . import read
+
+        try:
+            if args.dynamic_command == "events":
+                rows = _with_session(lambda db: read.list_dynamic_stages(db, args.job_id))
+                for row in rows:
+                    output.print(f"{row.created_at}  {row.stage}  {row.status}  {row.message}  {row.detail or ''}")
+            else:
+                rows = _with_session(lambda db: read.list_runtime_evidence(db, args.job_id))
+                for row in rows:
+                    output.print(f"{row.id}  {row.evidence_type}  {row.label}  {row.source_path}")
+            if not rows:
+                output.print("No dynamic records found.")
+            return 0
+        except ValueError as exc:
+            output.print(f"Dynamic read failed: {exc}")
+            return 1
+    output.print("Choose a dynamic command: status, start, events, or evidence.")
+    return 2
+
+
 def interactive(output: Output) -> int:
     _banner(output)
     while True:
@@ -196,4 +264,6 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as exc:
             output.print(f"Error: {exc}")
             return 1
+    if args.command == "dynamic":
+        return _dynamic_command(args, output)
     return interactive(output)
