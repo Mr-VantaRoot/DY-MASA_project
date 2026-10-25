@@ -15,9 +15,13 @@ from sqlalchemy.orm import sessionmaker
 from app.api.routes.jobs import _events_after, _resolve_storage_file, stream_job_events
 from app.api.routes.dynamic import _manager
 from app.core.config import Settings
-from app.db.base import AnalysisJob, AnalysisJobStatus, Base
+from app.db.base import AnalysisArtifact, AnalysisEvidence, AnalysisFinding, AnalysisJob, AnalysisJobStatus, AnalysisReasoning, AnalysisReport, ArtifactType, Base, EvidenceCategory, FindingSeverity
 from app.services.job_events import JobEventStore, JobStageEvent, emit_job_event, job_event_store
 from app.services.job_service import JobRunner, JobService, _job_finished, _submitted_jobs, analysis_executor, cleanup_interrupted_jobs, dispatch_queued_jobs
+from ai.reasoning import AttackPath, ReasoningResult
+from analysis.decompilation import DecompilationResult
+from analysis.evidence import EvidenceItem
+from analysis.findings import FindingCandidate
 from dynamic.adb.client import AdbResult
 from dynamic.runtime.orchestrator import DynamicAnalysisError, DynamicRuntimeOrchestrator
 
@@ -166,6 +170,16 @@ class ConfirmedBugTests(unittest.TestCase):
             with sessions() as db:
                 self.assertEqual(db.get(AnalysisJob, "claim-job").status, AnalysisJobStatus.running)
 
+    def test_normal_worker_rejects_already_running_job(self) -> None:
+        db = MagicMock()
+        db.get.return_value = SimpleNamespace(status=AnalysisJobStatus.running)
+        context = MagicMock()
+        context.__enter__.return_value = db
+        context.__exit__.return_value = False
+        with patch("app.db.session.SessionLocal", return_value=context), patch.object(JobRunner, "_claim_job") as claim:
+            JobRunner(SimpleNamespace()).prepare_uploaded_apk("already-running")
+        claim.assert_not_called()
+
     def test_restart_requeues_interrupted_work_without_deleting_it(self) -> None:
         with TemporaryDirectory() as temp:
             engine = create_engine(f"sqlite+pysqlite:///{Path(temp) / 'restart.db'}")
@@ -200,6 +214,45 @@ class ConfirmedBugTests(unittest.TestCase):
             _job_finished("failed-worker", settings)
         self.assertNotIn("failed-worker", _submitted_jobs)
         dispatch.assert_called_once_with(settings)
+
+    def test_retry_persistence_deduplicates_partial_records_without_deleting_history(self) -> None:
+        with TemporaryDirectory() as temp:
+            engine = create_engine(f"sqlite+pysqlite:///{Path(temp) / 'retry.db'}")
+            Base.metadata.create_all(engine)
+            sessions = sessionmaker(bind=engine)
+            source = Path(temp) / "AndroidManifest.xml"
+            source.write_text("<manifest />", encoding="utf-8")
+            job = AnalysisJob(
+                id="retry-job",
+                original_filename="retry.apk",
+                stored_filename="retry.apk",
+                apk_path="/tmp/retry.apk",
+                file_size_bytes=1,
+                status=AnalysisJobStatus.queued,
+                current_step="Queued",
+            )
+            evidence = EvidenceItem(EvidenceCategory.manifest, "manifest_metadata", "Manifest", {"package": "x"}, source, "manifest")
+            finding = FindingCandidate("retry-rule", "Retry finding", FindingSeverity.info, "Test", "fact", "review", ["evidence"])
+            reasoning = ReasoningResult("deterministic", "summary", [AttackPath("path", ["step"], ["evidence"])], "limits")
+            decompilation = DecompilationResult("apktool", Path(temp) / "decoded", Path(temp) / "apktool.log", 0, True)
+            with sessions() as db:
+                db.add(job)
+                db.commit()
+                JobRunner._record_evidence(db, job, [evidence])
+                JobRunner._record_evidence(db, job, [evidence])
+                JobRunner._record_findings(db, job, [finding])
+                JobRunner._record_findings(db, job, [finding])
+                JobRunner._record_reasoning(db, job, reasoning)
+                JobRunner._record_reasoning(db, job, reasoning)
+                JobRunner._record_decompilation_artifacts(db, job, decompilation, ArtifactType.apktool_output)
+                JobRunner._record_decompilation_artifacts(db, job, decompilation, ArtifactType.apktool_output)
+                JobRunner._record_report(db, job, "html", Path(temp) / "retry.html")
+                JobRunner._record_report(db, job, "html", Path(temp) / "retry.html")
+                self.assertEqual(db.query(AnalysisEvidence).count(), 1)
+                self.assertEqual(db.query(AnalysisFinding).count(), 1)
+                self.assertEqual(db.query(AnalysisReasoning).count(), 1)
+                self.assertEqual(db.query(AnalysisArtifact).count(), 2)
+                self.assertEqual(db.query(AnalysisReport).count(), 1)
 
     def _settings(self, root: Path) -> SimpleNamespace:
         return SimpleNamespace(

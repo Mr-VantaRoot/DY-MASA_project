@@ -346,15 +346,13 @@ class JobRunner(_JobStorageHelpers):
 
         with SessionLocal() as db:
             job = db.get(AnalysisJob, job_id)
-            if job is None:
+            if job is None or job.status != AnalysisJobStatus.queued:
                 return
-            if job.status == AnalysisJobStatus.queued and not self._claim_job(db, job_id):
-                return
-            if job.status not in {AnalysisJobStatus.queued, AnalysisJobStatus.running}:
+            if not self._claim_job(db, job_id):
                 return
             db.expire_all()
             job = db.get(AnalysisJob, job_id)
-            if job is None:
+            if job is None or job.status != AnalysisJobStatus.running:
                 return
 
             cancel_event = job_cancellation_registry.register(job_id)
@@ -619,7 +617,14 @@ class JobRunner(_JobStorageHelpers):
 
     @staticmethod
     def _record_evidence(db: Session, job: AnalysisJob, evidence_items: list[EvidenceItem]) -> None:
+        existing = {
+            (item.evidence_type, item.label, item.value_json, item.source_path, item.source_node)
+            for item in db.scalars(select(AnalysisEvidence).where(AnalysisEvidence.job_id == job.id)).all()
+        }
         for item in evidence_items:
+            key = (item.evidence_type, item.label, item.value_json, str(item.source_path), item.source_node)
+            if key in existing:
+                continue
             db.add(
                 AnalysisEvidence(
                     job_id=job.id,
@@ -631,12 +636,20 @@ class JobRunner(_JobStorageHelpers):
                     source_node=item.source_node,
                 )
             )
+            existing.add(key)
         db.commit()
         db.refresh(job)
 
     @staticmethod
     def _record_findings(db: Session, job: AnalysisJob, findings: list[FindingCandidate]) -> None:
+        existing = {
+            (item.rule_id, item.title, item.severity, item.category, item.description, item.remediation, item.evidence_ids_json)
+            for item in db.scalars(select(AnalysisFinding).where(AnalysisFinding.job_id == job.id)).all()
+        }
         for finding in findings:
+            key = (finding.rule_id, finding.title, finding.severity, finding.category, finding.description, finding.remediation, finding.evidence_ids_json)
+            if key in existing:
+                continue
             db.add(
                 AnalysisFinding(
                     job_id=job.id,
@@ -649,10 +662,22 @@ class JobRunner(_JobStorageHelpers):
                     evidence_ids_json=finding.evidence_ids_json,
                 )
             )
+            existing.add(key)
         db.commit()
 
     @staticmethod
     def _record_reasoning(db: Session, job: AnalysisJob, reasoning: ReasoningResult) -> None:
+        duplicate = db.scalars(
+            select(AnalysisReasoning).where(
+                AnalysisReasoning.job_id == job.id,
+                AnalysisReasoning.provider == reasoning.provider,
+                AnalysisReasoning.summary == reasoning.summary,
+                AnalysisReasoning.attack_paths_json == reasoning.attack_paths_json,
+                AnalysisReasoning.limitations == reasoning.limitations,
+            )
+        ).first()
+        if duplicate is not None:
+            return
         db.add(
             AnalysisReasoning(
                 job_id=job.id,
@@ -684,24 +709,19 @@ class JobRunner(_JobStorageHelpers):
         result: DecompilationResult,
         output_artifact_type: ArtifactType,
     ) -> None:
-        db.add(
-            AnalysisArtifact(
-                job_id=job.id,
-                artifact_type=output_artifact_type,
-                tool_name=result.tool_name,
-                path=str(result.output_path),
-                exit_code=result.exit_code,
-            )
-        )
-        db.add(
-            AnalysisArtifact(
-                job_id=job.id,
-                artifact_type=ArtifactType.tool_log,
-                tool_name=result.tool_name,
-                path=str(result.log_path),
-                exit_code=result.exit_code,
-            )
-        )
+        existing = {
+            (item.artifact_type, item.tool_name, item.path, item.exit_code)
+            for item in db.scalars(select(AnalysisArtifact).where(AnalysisArtifact.job_id == job.id)).all()
+        }
+        records = [
+            (output_artifact_type, result.tool_name, str(result.output_path), result.exit_code),
+            (ArtifactType.tool_log, result.tool_name, str(result.log_path), result.exit_code),
+        ]
+        for artifact_type, tool_name, path, exit_code in records:
+            if (artifact_type, tool_name, path, exit_code) in existing:
+                continue
+            db.add(AnalysisArtifact(job_id=job.id, artifact_type=artifact_type, tool_name=tool_name, path=path, exit_code=exit_code))
+            existing.add((artifact_type, tool_name, path, exit_code))
         db.commit()
 
     @staticmethod
@@ -711,7 +731,14 @@ class JobRunner(_JobStorageHelpers):
         result: NativeAnalysisResult,
         summary_path: Path,
     ) -> None:
+        existing = {
+            (item.artifact_type, item.tool_name, item.path, item.exit_code)
+            for item in db.scalars(select(AnalysisArtifact).where(AnalysisArtifact.job_id == job.id)).all()
+        }
         for path in (result.log_path, summary_path):
+            key = (ArtifactType.tool_log, result.tool_name, str(path), result.exit_code)
+            if key in existing:
+                continue
             db.add(
                 AnalysisArtifact(
                     job_id=job.id,
@@ -721,6 +748,7 @@ class JobRunner(_JobStorageHelpers):
                     exit_code=result.exit_code,
                 )
             )
+            existing.add(key)
         db.commit()
 
 
