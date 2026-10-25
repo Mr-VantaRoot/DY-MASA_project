@@ -1,168 +1,335 @@
-# DY-MASA — Android Application Security Assessment
+# MASA + DY-MASA
 
-DY-MASA is an evidence-backed platform for assessing Android APKs. It combines **static APK analysis** with an optional **runtime-analysis workflow** using Android Debug Bridge (ADB), then organizes observations into reviewable findings and exports HTML and PDF reports.
+**Evidence-backed Android application security assessment: static analysis (MASA) and ADB runtime validation (DY-MASA), in one local web app.**
 
-The goal is to make Android application assessment more organized and traceable: upload an APK, follow the analysis job, inspect findings and their supporting evidence, and review the generated report.
+MASA + DY-MASA is a local workbench for assessing Android APKs. Upload an APK you own or are authorized to test, follow a tracked analysis job, inspect structured evidence and rule-based findings, optionally validate selected behavior on an Android emulator or permitted test device, and export HTML and PDF reports.
 
-> **Scope:** DY-MASA supports security assessment and triage. It does not prove that every finding is exploitable, replace a full manual mobile penetration test, or guarantee detection of every vulnerability. Use it only with APKs and devices you own or are authorized to test.
+The platform is designed for traceability: findings are derived from stored evidence, and reports include scope and validation limitations.
+
+> **Scope:** This is an automated assessment and triage tool. It reports observations and likely risks; it does not prove exploitability, guarantee detection, or replace a manual mobile penetration test. The analysis and reasoning pipeline is deterministic Python; it does not use an AI/LLM to produce findings.
 
 ## Contents
 
-- [What it does](#what-it-does)
-- [How it works](#how-it-works)
-- [Features](#features)
-- [Technology stack](#technology-stack)
-- [Architecture](#architecture)
-- [Requirements](#requirements)
-- [Setup on Fedora or Linux](#setup-on-fedora-or-linux)
-- [Run DY-MASA](#run-dy-masa)
-- [Run an assessment](#run-an-assessment)
-- [Stop the services](#stop-the-services)
-- [Configuration](#configuration)
-- [API and developer tools](#api-and-developer-tools)
-- [Project layout](#project-layout)
-- [Limitations](#limitations)
-- [Security notes](#security-notes)
+1. [What it provides](#1-what-it-provides)
+2. [Features](#2-features)
+3. [How it works](#3-how-it-works)
+4. [Detection coverage](#4-detection-coverage)
+5. [Evidence, findings, and reports](#5-evidence-findings-and-reports)
+6. [Technology stack](#6-technology-stack)
+7. [Architecture and project layout](#7-architecture-and-project-layout)
+8. [Development approach](#8-development-approach)
+9. [Getting started on Fedora/Linux](#9-getting-started-on-fedoralinux)
+10. [Using the platform](#10-using-the-platform)
+11. [Starting and stopping features](#11-starting-and-stopping-features)
+12. [Configuration](#12-configuration)
+13. [API reference](#13-api-reference)
+14. [Testing](#14-testing)
+15. [Safety and security model](#15-safety-and-security-model)
+16. [Limitations and troubleshooting](#16-limitations-and-troubleshooting)
+17. [Responsible use, license, and author](#17-responsible-use-license-and-author)
 
-## What it does
+<!-- Add genuine screenshots when available:
+![Dashboard](docs/images/dashboard.png)
+![Findings](docs/images/findings.png)
+-->
 
-Android application security reviews can involve several separate tasks: decoding an APK, inspecting its manifest and code, sorting useful evidence from raw tool output, deciding which risks deserve attention, and writing a report.
+---
 
-DY-MASA brings much of that workflow into one local web application. It creates a tracked job for each APK, runs analysis tools, stores evidence and findings, displays job progress, and generates reports. When an Android runtime target is configured and ready, a separate dynamic workflow can install and launch the APK and collect runtime observations.
+## 1. What it provides
 
-## How it works
+The application runs locally with the backend at `127.0.0.1:8000` and the Vite frontend at `127.0.0.1:5173`.
 
-### 1. Upload and track the APK
-
-The web interface sends the APK to the FastAPI backend. The backend validates the upload, creates an analysis job, calculates a SHA-256 digest, and stores the file in the local storage area. Jobs and their stages are tracked in the configured database.
-
-### 2. Decode and decompile
-
-- **apktool** decodes the APK's Android resources and manifest.
-- **JADX** decompiles DEX bytecode into Java-like source where possible.
-- **Ghidra** can optionally analyze native libraries when it is enabled, configured, and native libraries are present.
-
-### 3. Extract security evidence
-
-Python analysis modules inspect APK-derived files and create structured evidence. Examples include manifest metadata, permissions, application flags, exported components, deep links, possible hardcoded secrets, and selected insecure implementation patterns.
-
-### 4. Generate findings and validation guidance
-
-Deterministic rules evaluate the extracted evidence and generate findings with severity estimates, explanations, remediation guidance, and links to supporting evidence. The reasoning module summarizes findings and proposes manual validation paths. It is **not currently a live LLM integration**.
-
-### 5. Optional runtime analysis
-
-The DY-MASA runtime workflow uses ADB with a ready Android emulator or an explicitly permitted physical test device. It can record device details, installation and launch results, screenshots, logcat captures, crash-related observations, and selected non-destructive attack-surface validation results. Runtime observations are stored as evidence and reports can be regenerated to include them.
-
-### 6. Review and export
-
-The dashboard displays job progress, findings, evidence, artifacts, and reports. The backend generates HTML and PDF reports that include findings, supporting evidence, validation guidance, and scope limitations.
-
-## Features
-
-- APK upload validation and SHA-256 identification.
-- Background analysis jobs with recorded status and stages.
-- APK decoding with apktool and decompilation with JADX.
-- Manifest and permission analysis.
-- Application-configuration and exported-component checks.
-- Deep-link and selected code-risk analysis.
-- Evidence-backed findings with severity estimates and remediation guidance.
-- Deterministic summaries and manual validation paths.
-- Optional Ghidra analysis for native libraries.
-- Optional Android runtime workflow through ADB.
-- Runtime logcat capture, log classification, crash-related observations, and screenshots.
-- Dynamic device status and read-only storage reporting.
-- Job history, stage timelines, artifacts, and event streaming.
-- HTML and PDF report generation.
-- Health endpoint and environment-check helper.
-- PostgreSQL support with a documented SQLite fallback for a local, single-user demo.
-
-## Technology stack
-
-| Technology | Purpose |
+| Input | Output |
 | --- | --- |
-| **Python** | Coordinates the analysis pipeline, evidence extraction, finding generation, runtime orchestration, and report generation. |
-| **FastAPI + Uvicorn** | Exposes the backend HTTP API and serves the application logic. |
-| **Pydantic Settings** | Loads application configuration from environment variables and the local `.env` file. |
-| **SQLAlchemy** | Maps analysis jobs, stages, evidence, findings, artifacts, events, and reports to database records. |
-| **PostgreSQL / SQLite** | Persists structured application data. PostgreSQL is the normal database; SQLite is available as a local demo fallback. |
-| **React + TypeScript** | Builds the browser-based user interface. |
-| **Vite** | Runs the frontend development server and builds frontend assets. |
-| **Tailwind CSS** | Styles the frontend. |
-| **TanStack Query, Wouter, Lucide React** | Support frontend data handling, routing, and icons. |
-| **Java** | Runs the Java-based Android analysis tools. |
-| **apktool** | Decodes APK resources and Android manifest data. |
-| **JADX CLI** | Decompiles Android DEX bytecode for source-level inspection. |
-| **Android Debug Bridge (ADB)** | Communicates with the configured emulator or permitted physical test device for runtime observations. |
-| **Ghidra (optional)** | Supports headless static analysis of native libraries when configured. |
-| **ReportLab** | Generates PDF reports. |
-| **HTML generation** | Produces browser-readable report files. |
+| An APK file | A tracked analysis job, stage history, and SHA-256 fingerprint |
+| APK-derived files | Structured evidence and rule-based findings with remediation guidance |
+| Optional ready Android emulator or permitted test phone | Runtime observations such as install/launch results, screenshots, logcat, and selected component/deep-link checks |
+| Stored evidence and findings | HTML and PDF reports with manual validation guidance and stated limitations |
 
-The deterministic reasoning module is implemented in Python. The project does not currently require an external AI service or LLM to generate findings.
+The repository brings together two related parts:
 
-## Architecture
+- **MASA (Mobile App Security Analysis):** the static pipeline that decodes and decompiles an APK, extracts evidence, generates findings, and builds reports.
+- **DY-MASA:** the optional runtime-validation stage that communicates with an Android target through ADB and adds observations to the job's evidence and reports.
+
+Runtime analysis is separate from the static scan. A report generated after static analysis alone is expected to contain static results only; runtime evidence is added after a dynamic run completes successfully.
+
+---
+
+## 2. Features
+
+### Static analysis
+
+- APK extension and ZIP-structure validation, upload size limit, and SHA-256 fingerprint.
+- APK resource/manifest decoding with apktool and DEX decompilation with JADX.
+- Manifest metadata, permissions, application flags, components, deep links, FileProvider paths, and network-security configuration review.
+- Exported-component analysis that accounts for Android's implicit-export behavior when an intent filter is present and `android:exported` is absent.
+- Secret scanning with known-shape checks and entropy checks.
+- Rule-based code-pattern checks over decompiled files.
+- Optional Ghidra headless analysis of native `.so` libraries, with overall and per-library timeouts and per-library status reporting.
+
+### Runtime validation (DY-MASA)
+
+- Emulator/device status and device selection, with physical-device use disabled by default.
+- APK installation and launch, screenshot capture, and logcat collection.
+- Logcat classification into process-related tiers and target-app crash observations.
+- Selected exported-activity and deep-link launch checks, with a separate log for each validation step.
+- ADB command audit and capture metadata.
+- Runtime evidence and artifacts linked to the same analysis job.
+
+### Platform
+
+- Background analysis jobs, stage history, progress events, cancellation/deletion, and interrupted-job recovery.
+- Server-Sent Events (SSE) for job progress.
+- Evidence, findings, reasoning, artifacts, and report views in a React dashboard.
+- HTML and PDF report generation.
+- Health endpoint that checks the database and executes configured tool checks.
+- PostgreSQL support and a SQLite fallback for local single-user use.
+- Optional terminal route/page, disabled by default and only mounted when enabled.
+- Command-line entry point for running the static pipeline on one APK.
+
+---
+
+## 3. How it works
+
+### Architecture overview
 
 ```mermaid
 flowchart TD
-    U[Browser: React + TypeScript] -->|HTTP API / event stream| B[FastAPI backend]
-    B --> J[Analysis job and database]
-    B --> D[apktool and JADX]
-    D --> E[Evidence extractors]
-    E --> F[Rule-based findings]
-    F --> R[Deterministic summaries and validation paths]
-    B -. optional runtime workflow .-> A[ADB + Android emulator or permitted device]
-    A --> V[Runtime logs, screenshots and observations]
-    V --> J
-    R --> J
-    J --> H[HTML report generator]
-    J --> P[PDF report generator]
-    H --> O[Review and export]
-    P --> O
+    UI["Browser UI: React + TypeScript"] -->|"HTTP + SSE"| API["FastAPI backend"]
+    API --> Q["Background job queue"]
+    Q --> S["Static pipeline: MASA"]
+    S --> E["Structured evidence"]
+    E --> F["Rule-based findings"]
+    F --> R["Deterministic reasoning"]
+    R --> DB[("PostgreSQL / SQLite")]
+    API -. "Optional runtime stage" .-> D["DY-MASA runtime"]
+    D -->|"ADB"| DEV["Emulator or permitted test device"]
+    D --> DB
+    DB --> REP["HTML + PDF report generators"]
+    REP --> OUT["Local report storage"]
 ```
 
-Static analysis and runtime analysis serve different purposes. Static analysis inspects APK-derived files without running the application. Runtime analysis records selected behavior observed while the APK is installed and launched on an Android target.
+### Static pipeline
 
-## Requirements
+1. **Upload and validate.** The backend validates the uploaded APK, applies the configured upload limit (default 300 MiB), stores it under a generated job ID, and records a SHA-256 digest.
+2. **Decode and decompile.** apktool decodes APK resources and manifest data. JADX produces Java-like source where possible. Tool output is written to the job workspace.
+3. **Analyze native libraries (optional).** If native `.so` libraries are present and Ghidra is enabled and configured, the analyzer processes libraries one at a time. It records coverage states such as completed, timed out, failed, skipped, or cancelled. Partial output may be retained; Ghidra coverage is not itself a vulnerability finding.
+4. **Extract evidence.** Python extractors convert APK-derived data into structured evidence records with source information.
+5. **Generate findings.** Deterministic rules evaluate evidence and create findings that reference evidence IDs.
+6. **Summarize.** A deterministic reasoning engine groups risks and suggests manual validation paths. These summaries are not generated by an LLM.
+7. **Report.** HTML and PDF reports are generated from stored job data.
 
-Install or configure the following components before running the project:
+### Runtime workflow
+
+```mermaid
+sequenceDiagram
+    participant UI as Dashboard
+    participant API as Backend
+    participant RT as DY-MASA
+    participant DEV as Android target
+    UI->>API: Start dynamic stage for completed static job
+    API->>RT: Queue runtime work
+    RT->>DEV: Select ready device and wait for boot
+    RT->>DEV: Capture baseline, install APK, launch app
+    RT->>DEV: Capture screenshot and logcat
+    RT->>RT: Classify logs and assess target-related crashes
+    loop Selected exported activities and deep links
+        RT->>DEV: Execute a bounded launch/reachability check
+        RT->>RT: Save isolated step log and validation result
+    end
+    RT->>API: Persist runtime evidence and artifacts
+    API->>API: Regenerate HTML and PDF reports
+```
+
+The runtime stage is intentionally limited. Exported activities and deep links may be launched for reachability checks. Exported services and providers are resolved rather than started or queried for data. Broadcast receivers and code-risk patterns are not dynamically exercised. A recorded observation is not proof of exploitability.
+
+---
+
+## 4. Detection coverage
+
+The following summarizes implemented rule families. A detection is a review signal, not proof that a vulnerability is exploitable.
+
+| Area | Example rule IDs / evidence | Typical interpretation |
+| --- | --- | --- |
+| Application flags | `android-debuggable-enabled`, `android-backup-enabled` | Review debug and backup configuration |
+| Cleartext policy | `android-cleartext-traffic-enabled`, `android-cleartext-policy-uncertain` | Review cleartext network policy |
+| Exported components | `android-exported-<type>-unprotected`, `android-exported-<type>-protected` | Review component exposure and protections |
+| Entry points | `android-launcher-entry-points`, `android-exported-attribute-required-for-installation` | Informational entry-point/install compatibility notes |
+| Providers | `android-exported-content-provider-review`, `android-fileprovider-path-review` | Review provider exposure and path configuration |
+| Deep links | `android-wildcard-deep-links-declared`, `android-deep-links-declared` | Review declared deep-link surface |
+| Permissions | `android-dangerous-permissions-requested` | Review dangerous permissions requested |
+| Secrets | `android-shape-validated-hardcoded-secrets` | Review candidate hardcoded secrets |
+| Code patterns | `android-code-risk-<evidence_type>` | Review selected potentially risky implementation patterns |
+| Coverage | `analysis-extraction-coverage-incomplete` | Indicates extraction limits or incomplete coverage |
+
+### Code-pattern rules
+
+The static code-risk extractor uses pattern-based checks over selected decompiled file types, including Java/Kotlin-like sources, XML, JSON, properties, Gradle files, and Smali. Implemented rule families include:
+
+- WebView JavaScript enablement and file-access settings.
+- WebView JavaScript bridges.
+- Potentially permissive TLS trust managers and hostname verifiers.
+- Weak cryptographic algorithm/mode selections, including AES/ECB, DES/DESede, MD5, and SHA-1.
+- Cleartext HTTP URL literals.
+- Raw SQL query construction using concatenation or formatting.
+
+Pattern matches can be false positives or miss obfuscated, dynamically generated, or otherwise unrecognized code.
+
+### Secret scanner
+
+The scanner combines keyword families with known-shape checks and entropy checks. It recognizes selected key/token formats and applies stricter requirements to generic values. Some generated or resource-heavy files are excluded to reduce noise. Extraction caps and unreadable/oversized-file conditions can be recorded as incomplete-coverage evidence rather than silently implying that every file was checked.
+
+Findings can include MASVS/MSTG references and a heuristic score. A heuristic score is a triage aid, **not a calculated CVSS vector**.
+
+---
+
+## 5. Evidence, findings, and reports
+
+### Evidence model
+
+Evidence records contain structured information such as category, type, label, value, and source path. Findings reference evidence IDs so a reviewer can trace a conclusion back to the observations that triggered it. The dashboard and report generators use stored job data rather than relying only on transient console output.
+
+Extraction limits or skipped/unreadable files may reduce coverage. Review any incomplete-coverage evidence and do not interpret an empty finding list as proof that an APK is secure.
+
+### Logcat classification
+
+The runtime logcat parser is implemented in Python and can be tested independently of ADB:
+
+1. It discovers target-app process IDs from Android process-start records and tracks observed process IDs as the app restarts.
+2. It classifies lines into tiers: **Tier A** for the target process, **Tier B** for selected system lifecycle lines or lines referencing the target PID/UID, and **Tier C** for other lines that mention the package.
+3. The filtered log combines Tier A and Tier B while preserving the original line order and line content.
+4. Crash observations are tied to the target application/process rather than triggered by a generic occurrence of the word “crash”.
+
+Supported input formats and device-specific behavior should be checked against the Limitations section when interpreting a capture.
+
+### Runtime artifacts
+
+Depending on the run and device, the workspace may contain:
+
+| Artifact | Purpose |
+| --- | --- |
+| `logcat.txt` | Raw logcat capture |
+| `logcat-stderr.txt` | Standard error from logcat capture |
+| `logcat-filtered.txt` | Tier A + Tier B lines |
+| `logcat-tier-a.txt`, `logcat-tier-b.txt`, `logcat-tier-c.txt` | Individual log tiers |
+| `baseline-logcat.txt` | Short capture before installation for device-noise context |
+| `launch-screenshot.png` | Screenshot after app launch |
+| `steps/` | Isolated logs for individual validation steps |
+| `runtime-validations.json` | Per-step validation results |
+| `adb-audit.json` | ADB commands issued, with timing and exit status |
+| `capture-metadata.json` | Device/capture metadata, app identity, and log classification counts |
+
+Exact artifacts depend on which stages ran and whether the device/tool returned usable output.
+
+### Report contents
+
+Reports can include assessment target and scope, executive summary, key and technical findings, runtime validation, native-analysis coverage, evidence register, manual validation plan, and a structured risk summary. Runtime sections should be interpreted according to the stated test boundaries; they do not imply that every attack surface was exercised.
+
+---
+
+## 6. Technology stack
+
+| Layer | Technology | Purpose |
+| --- | --- | --- |
+| Backend and analysis | Python | Pipeline orchestration, evidence extraction, rules, runtime coordination |
+| API | FastAPI, Uvicorn | HTTP API and interactive API documentation |
+| Configuration | Pydantic Settings | Environment variables and local `.env` configuration |
+| Persistence | SQLAlchemy, PostgreSQL, SQLite | Jobs, stages, evidence, findings, artifacts, events, and reports |
+| Android static analysis | Java, apktool, JADX CLI | Decode resources/manifest and decompile DEX |
+| Native analysis | Ghidra headless (optional) | Analyze native libraries |
+| Android runtime | ADB, Android Emulator/AVD or permitted device | Install/launch, screenshots, logcat, selected validation steps |
+| Reporting | HTML generation, ReportLab | Browser-readable and PDF reports |
+| Frontend | React, TypeScript, Vite | Dashboard and development server |
+| UI/data | Tailwind CSS, Radix UI, TanStack Query, Wouter, Lucide React | Styling, UI primitives, data fetching, routing, icons |
+| Tests | Python `unittest` | Unit and integration-focused regression tests |
+
+---
+
+## 7. Architecture and project layout
+
+The main source areas are:
+
+```text
+.
+├── analysis/             APK decoding, evidence extraction, code-risk rules, Ghidra
+├── ai/                   Deterministic reasoning engine (not an LLM integration)
+├── backend/
+│   └── app/
+│       ├── api/routes/   Health, jobs, dynamic, optional terminal
+│       ├── core/         Settings and configuration
+│       ├── db/           Models and database sessions
+│       ├── schemas/      API response models
+│       ├── services/     Job pipeline, events, cancellation, tool checks
+│       └── cli/          Static analysis CLI
+├── dynamic/
+│   ├── adb/              ADB client and operation guardrails
+│   ├── emulator/         Device selection and emulator management
+│   ├── logcat/           Parser, classifier, crash observations
+│   └── runtime/          Runtime orchestration
+├── reports/              HTML and PDF generators
+├── frontend/             React + TypeScript dashboard
+├── tests/                Automated tests and fixtures
+├── work/                 Startup scripts and environment/smoke helpers
+├── storage/              Local uploads, workspaces, and reports (runtime data)
+├── RUNBOOK.md            Operating notes
+└── .env.example          Configuration template
+```
+
+The storage directory is used for runtime data and should not be treated as source code. Check repository ignore rules before adding generated APKs, reports, emulator output, or other potentially sensitive artifacts to version control.
+
+---
+
+## 8. Development approach
+
+The project was developed iteratively, adding the backend and tool checks first, then APK intake and job tracking, decoding/decompilation, evidence-backed findings, deterministic reasoning, reports, secret/code-risk analysis, queued jobs, and runtime/Ghidra capabilities.
+
+Core design decisions:
+
+- **Evidence first:** findings should reference stored evidence.
+- **Deterministic by design:** findings and summaries are produced by explicit Python rules rather than a generative model.
+- **Honest claims:** runtime observations, heuristic scores, and coverage gaps are identified as such.
+- **Safety defaults:** runtime device access is bounded, physical-device use is opt-in, personal-storage scanning is off by default, and the optional terminal is off by default.
+- **Regression testing:** unit tests cover selected parsing, detection, runtime safety, job behavior, and reporting paths.
+
+AI coding assistants were used as development tools under the author's direction. That is separate from the shipped analysis pipeline, which does not use an AI/LLM to generate assessment results.
+
+---
+
+## 9. Getting started on Fedora/Linux
+
+### Requirements
+
+Install or configure:
 
 - Python and pip.
-- Node.js and npm.
+- Node.js and npm. The current Vite 7 toolchain requires a compatible recent Node.js release.
 - Java.
-- apktool and its JAR file.
-- JADX CLI and its JAR file.
-- PostgreSQL for the normal database setup, or SQLite for a local demo.
-- Android SDK Platform Tools (ADB) for runtime analysis.
-- Android Emulator and a configured AVD if you plan to use an emulator.
-- Ghidra only if you want to enable its optional native-library analysis.
-
-Exact executable and JAR paths are configurable. Use [`.env.example`](.env.example) as the template; do not copy example placeholder paths unchanged.
-
-## Setup on Fedora or Linux
-
-Run commands from the repository root.
+- apktool JAR.
+- JADX CLI JAR containing `jadx.cli.JadxCLI`.
+- PostgreSQL for the normal database setup, or use the supported local SQLite fallback.
+- Android SDK Platform Tools (`adb`) for runtime analysis.
+- Android Emulator and a configured AVD if you want to use an emulator.
+- Ghidra only if you want native-library analysis.
 
 ### 1. Configure the environment
 
-Create your local environment file:
+From the repository root:
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` and set the paths and database settings for your machine. The sample file contains placeholder paths for apktool, JADX, Android SDK tools, and optional Ghidra.
+Edit `.env` for your machine. The example contains placeholder paths and must not be copied unchanged. Configuration uses the `MOBILE_PENTEST_` environment-variable prefix.
 
-### 2. Check the local environment
+### 2. Check the environment
 
 ```bash
 bash work/check-environment.sh
 ```
 
-Review any missing dependencies or incorrect paths reported by the helper before starting the application.
+This helper checks Java, the configured/default apktool and JADX JAR paths, ADB, and whether PostgreSQL is accepting connections. It is an initial check, not a guarantee that every feature—including Ghidra and the emulator—is fully configured.
 
 ### 3. Install backend dependencies
-
-Use the repository's Python environment and install the backend requirements:
 
 ```bash
 python -m venv .venv
@@ -170,7 +337,7 @@ source .venv/bin/activate
 pip install -r backend/requirements.txt
 ```
 
-If your shell or Python installation requires a different virtual-environment setup, use the equivalent commands for your environment.
+The startup helper prefers `./myenv/bin/python` when present and otherwise falls back to `python`. Use the environment that has the repository's backend requirements installed.
 
 ### 4. Install frontend dependencies
 
@@ -180,185 +347,234 @@ npm install
 cd ..
 ```
 
-### 5. Configure the database
+### 5. Database choice
 
-By default, the backend uses PostgreSQL settings from `.env.example`. Ensure the configured database exists and that the credentials are valid.
+The backend normally builds a PostgreSQL connection from the configured `MOBILE_PENTEST_POSTGRES_*` values. The included `work/start-backend.sh` checks `pg_isready`; if PostgreSQL is unavailable, it sets the SQLite URL `sqlite:///./storage/masa.sqlite3` for that process.
 
-For a local, single-user demonstration where PostgreSQL is unavailable, the runbook documents this SQLite fallback:
+You can also explicitly select a database URL in `.env`:
 
 ```bash
-export MOBILE_PENTEST_DATABASE_URL="sqlite:///./storage/masa.sqlite3"
+MOBILE_PENTEST_DATABASE_URL=sqlite:///./storage/masa.sqlite3
 ```
 
-SQLite fallback is intended for a local demo, not as a replacement for the normal PostgreSQL deployment.
+SQLite is intended for a local single-user demo; PostgreSQL is the normal database configuration.
 
-For additional details, see [RUNBOOK.md](RUNBOOK.md).
+### 6. Start the services
 
-## Run DY-MASA
+Open two terminals from the repository root.
 
-Start the backend from the repository root in the first terminal:
+Terminal 1 — backend:
 
 ```bash
 bash work/start-backend.sh
 ```
 
-Start the frontend in a second terminal:
+Terminal 2 — frontend:
 
 ```bash
 bash work/start-frontend.sh
 ```
 
-Open the dashboard:
+Open **http://127.0.0.1:5173**.
 
-**http://127.0.0.1:5173**
+Useful URLs:
 
-The backend health endpoint is:
+- Dashboard: http://127.0.0.1:5173
+- Health: http://127.0.0.1:8000/api/health
+- Interactive API docs: http://127.0.0.1:8000/docs
 
-**http://127.0.0.1:8000/api/health**
+The backend and frontend are separate processes; keep both running while using the web app.
 
-FastAPI's interactive API documentation is available at:
+### Run the static pipeline from the CLI
 
-**http://127.0.0.1:8000/docs**
-
-The backend and frontend are separate local services; both must be running for the web interface to work.
-
-## Run an assessment
-
-1. Open the dashboard.
-2. Upload an APK you own or have permission to assess.
-3. Follow the job status and pipeline timeline while the static analysis runs.
-4. Review the generated findings and open their supporting evidence.
-5. Download or open the generated HTML/PDF report.
-6. If you also want runtime observations, configure ADB and a permitted Android target, then use the Dynamic page for the selected completed static-analysis job.
-7. Review runtime artifacts and regenerate/inspect the updated report.
-
-For a physical Android test device on Fedora, the runbook recommends installing Android Platform Tools if needed:
-
-```bash
-sudo dnf install android-tools
-```
-
-Enable Developer Options and USB debugging on a dedicated test phone, connect it, accept the device authorization prompt, and confirm that ADB recognizes it:
-
-```bash
-adb devices
-```
-
-The runtime configuration does not automatically permit every physical device. Review `MOBILE_PENTEST_DYNAMIC_ALLOW_PHYSICAL_DEVICE` and `MOBILE_PENTEST_DYNAMIC_DEVICE_SERIAL` in your local configuration before running dynamic analysis.
-
-## Stop the services
-
-- In each terminal running the backend or frontend, press **Ctrl+C**.
-- If you started an Android emulator separately and no longer need it, close the emulator separately.
-- Stopping the web servers is **not** the same as cancelling an active runtime analysis job. The dynamic API currently documents a start action but not a dedicated dynamic-run stop endpoint; do not assume that stopping a terminal gracefully cancels every running analysis step.
-
-## Configuration
-
-Configuration is loaded using the `MOBILE_PENTEST_` environment-variable prefix and the local `.env` file. See [`.env.example`](.env.example) for the full list.
-
-Important settings include:
-
-| Setting | Purpose |
-| --- | --- |
-| `MOBILE_PENTEST_DATABASE_URL` | Optional explicit database URL, including the documented SQLite demo fallback. |
-| `MOBILE_PENTEST_POSTGRES_*` | PostgreSQL connection settings. |
-| `MOBILE_PENTEST_JAVA_PATH` | Java executable path. |
-| `MOBILE_PENTEST_APKTOOL_JAR_PATH` | apktool JAR path. |
-| `MOBILE_PENTEST_JADX_JAR_PATH` | JADX JAR path. |
-| `MOBILE_PENTEST_GHIDRA_ENABLED` | Enables or disables optional Ghidra support. |
-| `MOBILE_PENTEST_GHIDRA_HEADLESS_PATH` | Path to Ghidra's headless analysis executable. |
-| `MOBILE_PENTEST_ANDROID_SDK_PATH` | Android SDK location. |
-| `MOBILE_PENTEST_ADB_PATH` | ADB executable path. |
-| `MOBILE_PENTEST_EMULATOR_PATH` | Android Emulator executable path. |
-| `MOBILE_PENTEST_AVD_NAME` | Configured Android Virtual Device name. |
-| `MOBILE_PENTEST_DYNAMIC_DEVICE_SERIAL` | Optional preferred ADB device serial. |
-| `MOBILE_PENTEST_DYNAMIC_ALLOW_PHYSICAL_DEVICE` | Whether a physical device may be selected as a runtime target. |
-| `MOBILE_PENTEST_DYNAMIC_SCAN_PERSONAL_STORAGE` | Controls the optional shared-storage scan setting; keep disabled unless explicitly required for an authorized test. |
-| `MOBILE_PENTEST_MAX_UPLOAD_BYTES` | Maximum upload size; default is 300 MiB. |
-| `MOBILE_PENTEST_MAX_CONCURRENT_ANALYSIS_JOBS` | Maximum concurrent analysis jobs; default is one. |
-| `MOBILE_PENTEST_ENABLE_TERMINAL` | Enables the optional local terminal endpoint; disabled by default. |
-| `MOBILE_PENTEST_TERMINAL_TOKEN` | Private token required when the optional terminal is enabled. |
-
-Do not commit `.env`, credentials, tokens, APK samples containing private data, or generated analysis artifacts.
-
-## API and developer tools
-
-The API is served under `/api`. Useful routes include:
-
-| Route | Purpose |
-| --- | --- |
-| `GET /api/health` | Backend and dependency health information. |
-| `POST /api/jobs` | Upload an APK and create an analysis job. |
-| `GET /api/jobs` | List analysis jobs. |
-| `GET /api/jobs/{job_id}` | Retrieve one job. |
-| `GET /api/jobs/{job_id}/timeline` | Retrieve the job's recorded stages. |
-| `GET /api/jobs/{job_id}/events` | Stream job events using Server-Sent Events. |
-| `GET /api/jobs/{job_id}/artifacts` | List job artifacts. |
-| `POST /api/jobs/{job_id}/dynamic/start` | Start the optional runtime workflow for a job. |
-| `GET /api/dynamic/status` | Inspect ADB/emulator/device status. |
-| `GET /api/dynamic/storage` | Read-only storage summary for a ready target. |
-
-The interactive OpenAPI documentation at `/docs` is the most reliable place to inspect the routes and schemas exposed by the running version.
-
-A CLI entry point is also provided for running analysis on an APK path:
+With the backend dependencies installed and repository root as the working directory:
 
 ```bash
 export PYTHONPATH=".:backend"
 python -m app.cli.analyze_apk "/absolute/path/to/authorized-app.apk"
 ```
 
-On Windows PowerShell, set the Python path using:
-
-```powershell
-$env:PYTHONPATH = ".;backend"
-```
-
-## Project layout
-
-| Path | Responsibility |
-| --- | --- |
-| `frontend/` | React/TypeScript user interface. |
-| `backend/app/api/routes/` | FastAPI route handlers for health, jobs, dynamic analysis, and the optional terminal. |
-| `backend/app/core/` | Application settings and configuration. |
-| `backend/app/db/` | Database models and session setup. |
-| `backend/app/services/` | Job orchestration, scheduling, event handling, and analysis services. |
-| `analysis/` | APK decompilation integration, manifest/code evidence extraction, finding generation, and optional native analysis. |
-| `dynamic/` | ADB client, emulator/device management, runtime orchestration, log parsing, and classification. |
-| `ai/reasoning.py` | Deterministic structured summaries and manual validation paths. |
-| `reports/` | HTML and PDF report generators. |
-| `work/` | Local startup and environment-check helper scripts. |
-| `tests/` | Automated tests. |
-| `storage/` | Local uploads, per-job workspaces, generated reports, and other runtime data. |
-
-Generated files and local data under `storage/` are runtime artifacts, not source code.
-
-## Limitations
-
-- Results depend on the APK, tool versions, configuration, and the evidence extractors' coverage.
-- A requested permission, exported component, deep link, suspicious string, or code pattern is not by itself proof of a vulnerability.
-- Severity is an estimate for triage and may require adjustment after manual review.
-- JADX output may be incomplete or imperfect for some APKs.
-- Optional Ghidra analysis is limited to configured native-library workflows; it does not independently prove a vulnerability.
-- Runtime analysis covers selected installation, launch, logging, crash, and attack-surface observations. It is not full interactive application testing.
-- The current reasoning engine is deterministic and evidence-constrained, not a live LLM.
-- DY-MASA does not automatically perform exploit chains, credential attacks, or uncontrolled external network testing.
-
-## Security notes
-
-- Only analyze APKs you own or are authorized to test.
-- Use a dedicated emulator or test device whenever possible.
-- Review the device selected by ADB before starting a dynamic run.
-- The ADB client blocks selected destructive operations, including uninstall, wipe/reset/format operations and shell operations such as `pm clear` and `rm -rf`. This is a guardrail, not a substitute for using an isolated test target.
-- The optional terminal feature is disabled by default. If enabled, it is a trusted local-shell convenience—not a secure sandbox for untrusted users or arbitrary commands. Do not expose it to a public network; use an isolated VM/container and a separate OS user for stronger separation.
-- Bind the development servers to loopback unless you have deliberately configured and secured another deployment model.
-- Keep secrets in local environment configuration, not in source control.
-
-## Related documentation
-
-- [Runbook](RUNBOOK.md) — setup, device configuration, and operating notes.
-- [Technical presentation brief](TECHNICAL_PRESENTATION_BRIEF.md) — scope and current implementation limitations.
-- [Presentation notes](PRESENTATION_NOTES.md) — presentation-focused notes.
+Use a Linux absolute path on Fedora.
 
 ---
 
-DY-MASA is an ongoing project. This README describes the code paths and configuration currently documented in the repository; verify the local environment and target-device setup before a demonstration or assessment.
+## 10. Using the platform
+
+1. **Scan:** upload an APK and follow the job timeline.
+2. **Findings:** review severity, explanation, remediation guidance, and linked evidence.
+3. **Evidence:** inspect the underlying observations and source paths.
+4. **Reasoning:** review deterministic summaries and suggested manual validation paths.
+5. **Dynamic (optional):** after static analysis completes, ensure an authorized test device is ready and start the runtime stage.
+6. **Artifacts and reports:** inspect tool/runtime output and download the generated HTML or PDF report.
+
+A static report is available before runtime analysis. After a successful dynamic stage, the report is regenerated to include available runtime evidence. If dynamic analysis has not run or fails, do not assume the report contains runtime observations.
+
+---
+
+## 11. Starting and stopping features
+
+| Feature | Start/enable | Stop/disable |
+| --- | --- | --- |
+| Backend | `bash work/start-backend.sh` | `Ctrl+C` in its terminal |
+| Frontend | `bash work/start-frontend.sh` | `Ctrl+C` in its terminal |
+| Static scan | Upload an APK or use the CLI | Delete/cancel the job; already-running external tools may need to respond to cancellation |
+| Dynamic analysis | Start from the Dynamic page/API after static results are available | There is no dedicated individual dynamic-stop endpoint documented here; deleting the job or stopping the backend interrupts the run |
+| Emulator | Configure an AVD; the runtime manager may start it when needed | Close the emulator separately |
+| Physical device | Set `MOBILE_PENTEST_DYNAMIC_ALLOW_PHYSICAL_DEVICE=true` or explicitly pin a device serial | Restore the flag to `false` and clear any serial override |
+| Personal-storage size scan | Set `MOBILE_PENTEST_DYNAMIC_SCAN_PERSONAL_STORAGE=true` | Set it to `false` |
+| Ghidra | Set `MOBILE_PENTEST_GHIDRA_ENABLED=true` and configure `MOBILE_PENTEST_GHIDRA_HEADLESS_PATH` | Set `MOBILE_PENTEST_GHIDRA_ENABLED=false` |
+| Optional terminal | Set `MOBILE_PENTEST_ENABLE_TERMINAL=true` and configure a non-empty `MOBILE_PENTEST_TERMINAL_TOKEN` | Set `MOBILE_PENTEST_ENABLE_TERMINAL=false` |
+| SQLite | Set `MOBILE_PENTEST_DATABASE_URL=sqlite:///./storage/masa.sqlite3` | Unset the override to use PostgreSQL settings |
+
+Restart the backend after changing `.env`. If you enable the terminal, the frontend token setting is embedded in the frontend build; treat it as a local trusted-operator feature, not a secure remote-access mechanism.
+
+For a physical Android test phone on Fedora, install ADB if needed:
+
+```bash
+sudo dnf install android-tools
+adb devices
+```
+
+Enable USB debugging only on a device you are authorized to test and accept the device's RSA prompt.
+
+---
+
+## 12. Configuration
+
+Settings are loaded from `.env` and environment variables using the `MOBILE_PENTEST_` prefix. The authoritative list and defaults are in `backend/app/core/config.py` and `.env.example`; some tool paths are still legacy Windows defaults in the Python settings, so set Linux paths explicitly.
+
+| Setting suffix | Default / behavior | Purpose |
+| --- | --- | --- |
+| `DATABASE_URL` | Unset; overrides PostgreSQL URL | SQLAlchemy database URL |
+| `POSTGRES_HOST` | `localhost` | PostgreSQL host |
+| `POSTGRES_PORT` | `5432` | PostgreSQL port |
+| `POSTGRES_DB` | `mobile_pentest_mvp` in code; `.env.example` uses `MASA_DB` | Database name |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` | `postgres` / empty in code | Database credentials |
+| `JAVA_PATH` | Discovered Java executable when available, otherwise a legacy default | Java executable |
+| `APKTOOL_JAR_PATH` | Legacy Windows path unless configured | apktool JAR |
+| `JADX_JAR_PATH` | Legacy Windows path unless configured | JADX CLI JAR |
+| `TOOL_TIMEOUT_SECONDS` | `600` | General tool timeout |
+| `GHIDRA_ENABLED` | `true` | Enable/disable optional native analysis |
+| `GHIDRA_HEADLESS_PATH` | Unset | Path to Ghidra's `analyzeHeadless` executable |
+| `GHIDRA_TIMEOUT_SECONDS` | `900` seconds | Overall Ghidra time budget per analysis |
+| `GHIDRA_LIBRARY_TIMEOUT_SECONDS` | `300` seconds | Per-library Ghidra time budget |
+| `ANDROID_SDK_PATH` | `~/Android/Sdk` | Android SDK root |
+| `ADB_PATH` / `EMULATOR_PATH` | Discovered on PATH or derived from SDK, otherwise legacy defaults | Android tools |
+| `AVD_NAME` | `Dy-MASA` | Emulator profile name |
+| `ANDROID_AVD_HOME` | `~/.android/avd` | AVD directory |
+| `DYNAMIC_TIMEOUT_SECONDS` | `180` seconds | Runtime command timeout |
+| `EMULATOR_BOOT_TIMEOUT_SECONDS` | `180` seconds | Emulator boot wait |
+| `DYNAMIC_DEVICE_SERIAL` | Unset | Pin a specific ADB device |
+| `DYNAMIC_ALLOW_PHYSICAL_DEVICE` | `false` | Permit physical-device use |
+| `DYNAMIC_SCAN_PERSONAL_STORAGE` | `false` | Permit read-only shared-media size measurement |
+| `ENABLE_TERMINAL` | `false` | Mount optional terminal API |
+| `TERMINAL_TOKEN` | Unset | Token required when terminal is enabled |
+| `MAX_UPLOAD_BYTES` | `314572800` (300 MiB) | Maximum APK upload size |
+| `MAX_CONCURRENT_ANALYSIS_JOBS` | `1` | Static-analysis worker concurrency |
+
+Variable names in the table are suffixes; prefix them with `MOBILE_PENTEST_` in `.env`. Review `.env.example` before enabling optional capabilities.
+
+---
+
+## 13. API reference
+
+Routes below are mounted under `/api`, except the interactive documentation at `/docs`. Exact response schemas are available from the running API documentation.
+
+| Method and path | Purpose |
+| --- | --- |
+| `GET /api/health` | Database and configured-tool health check |
+| `POST /api/jobs` | Upload an APK and create an analysis job |
+| `GET /api/jobs` | List jobs |
+| `GET /api/jobs/{id}` | Read job status/details |
+| `DELETE /api/jobs/{id}` | Cancel/delete a job and its stored data |
+| `GET /api/jobs/{id}/timeline` | Read stage timeline |
+| `GET /api/jobs/{id}/events` | Stream job progress events |
+| `GET /api/jobs/{id}/artifacts` | List job artifacts |
+| `GET /api/jobs/{id}/artifacts/{artifact_id}/view` | View an artifact through the API |
+| `GET /api/jobs/{id}/evidence` | List evidence |
+| `GET /api/jobs/{id}/findings` | List findings |
+| `GET /api/jobs/{id}/reasoning` | Read deterministic reasoning output |
+| `GET /api/jobs/{id}/reports` | List reports |
+| `GET /api/jobs/{id}/reports/{report_id}/download` | Download a report |
+| `GET /api/dynamic/status` | Check Android device/emulator status |
+| `GET /api/dynamic/storage` | Read device storage totals and optional media-size estimates |
+| `POST /api/jobs/{id}/dynamic/start` | Start runtime validation |
+| `GET /api/jobs/{id}/dynamic/events` | Stream runtime-stage events |
+| `GET /api/jobs/{id}/dynamic/evidence` | Read runtime evidence |
+| `POST /api/terminal/run` | Run a command through the optional terminal, only when enabled |
+
+---
+
+## 14. Testing
+
+Run the Python test suite from the repository root in the configured Python environment:
+
+```bash
+PYTHONPATH=.:backend python -m unittest discover -s tests
+```
+
+The repository's tests cover areas including logcat parsing/classification, crash observations, manifest and deep-link extraction, detection accuracy, Ghidra per-library behavior and timeouts, runtime device/terminal guardrails, job behavior, and report generation. Test coverage is not equivalent to validation against every Android version or APK.
+
+For environment setup and operational notes, see [RUNBOOK.md](RUNBOOK.md). The `work/` directory also contains environment and phase/smoke helpers where present.
+
+---
+
+## 15. Safety and security model
+
+- Test only applications and devices you own or have explicit permission to assess.
+- Use a dedicated emulator or test device where possible.
+- Physical-device use is disabled by default unless enabled or explicitly pinned in configuration.
+- The ADB client blocks selected destructive operations. This is a guardrail, not a security sandbox.
+- The runtime stage does not intentionally start exported services, query provider data, or exercise broadcast receivers.
+- Personal/shared-storage size scanning is disabled by default and should only be enabled for a device you are authorized to inspect.
+- Artifact access is checked against the local storage root to prevent path traversal and symlink escapes.
+- Backend and Vite development server bind to loopback addresses by default.
+- **The application does not provide general API authentication. Do not expose it to an untrusted network or the public internet.**
+- **The optional terminal is not a sandbox.** It is disabled by default and includes command/path guardrails, but should only be enabled on a machine you control. Do not treat its token as a substitute for isolation or remote-access security.
+- Do not commit APKs, reports, logs, database files, credentials, or other sensitive assessment artifacts to a public repository.
+
+---
+
+## 16. Limitations and troubleshooting
+
+### Known limitations
+
+- **Rule-bound static coverage:** permissions, manifest settings, code patterns, and exported components are triage signals. Rules can produce false positives and false negatives.
+- **Decompilation:** JADX output can be incomplete; obfuscation and dynamically generated behavior can evade pattern matching.
+- **Ghidra:** optional native analysis reports library coverage and artifacts. It does not currently generate vulnerability findings by itself. Native analysis can be slow, and timeout/partial/skipped statuses must be reviewed.
+- **Runtime depth:** validation is intentionally shallow. It does not cover authenticated workflows, general UI interaction, network traffic capture/proxying, runtime instrumentation such as Frida, full file-content inspection, or comprehensive native-code runtime behavior. Validation is bounded to a maximum number of selected steps by the implementation.
+- **Deep links:** wildcard or underspecified URI patterns may be marked inconclusive rather than guessed.
+- **Logcat formats:** Android device output varies by version/vendor. If process-tier classification is unexpectedly empty or incomplete, inspect the raw capture and capture format before drawing conclusions.
+- **Device noise:** vendor/system messages may appear in log tiers; their presence alone does not make them findings.
+- **Dynamic cancellation:** there is no dedicated stop endpoint for an individual active runtime run.
+- **Legacy paths:** some Python setting defaults still contain Windows paths. Configure Linux paths explicitly in `.env`.
+- **Single-user local application:** multi-user accounts and general API authentication are not implemented.
+
+### Troubleshooting
+
+| Symptom | What to check |
+| --- | --- |
+| Frontend shows directory-listing/server logs instead of Vite startup output | Use `bash work/start-frontend.sh`; do not substitute a plain Python file server. |
+| `/api/health` returns `degraded` | Check the reported database/tool status and configure missing paths/dependencies. |
+| `ModuleNotFoundError: app` | Start from the repository root and use the supplied scripts or set `PYTHONPATH=".:backend"`. |
+| Dynamic start returns HTTP 409 | Confirm static analysis has completed and that another dynamic stage is not already active. |
+| No ready Android device | Check `adb devices`; the device must be authorized, or configure/start an AVD. |
+| Physical device is refused | Check `MOBILE_PENTEST_DYNAMIC_ALLOW_PHYSICAL_DEVICE` and `MOBILE_PENTEST_DYNAMIC_DEVICE_SERIAL`. |
+| Ghidra libraries are skipped | Check that `.so` files were extracted, Ghidra is enabled, and `MOBILE_PENTEST_GHIDRA_HEADLESS_PATH` points to an existing `analyzeHeadless` executable. |
+| Ghidra reports timeouts or partial results | Inspect the job's native-analysis coverage and Ghidra logs; a process exit code alone may not mean analysis completed. |
+| Terminal route returns 404 | The terminal router is not mounted unless `MOBILE_PENTEST_ENABLE_TERMINAL=true`; restart the backend after changing configuration. |
+| Terminal route returns 401 | Check that terminal access is enabled and the configured token matches. |
+
+Per-job tool logs and outputs are stored under the local storage workspace. Exact paths depend on the job ID and which stages ran.
+
+---
+
+## 17. Responsible use, license, and author
+
+Use this software only on applications and devices you own or have written permission to test. Follow applicable laws, organizational rules, and responsible-disclosure requirements.
+
+**License:** No license file was confirmed during this README update. Add a license before inviting external contributions or publishing the project for reuse.
+
+**Author:** Ibsa T. — [@Mr-VantaRoot](https://github.com/Mr-VantaRoot). Developed as an INSA exit project.
+
+Related documentation: [RUNBOOK.md](RUNBOOK.md). Check the repository for any additional presentation notes, technical briefs, or changelog files before linking to them.
