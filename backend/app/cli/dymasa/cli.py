@@ -19,9 +19,9 @@ except ImportError:  # Keep the launcher useful before optional CLI dependencies
 
 
 class Output:
-    def __init__(self, quiet: bool = False) -> None:
+    def __init__(self, quiet: bool = False, no_color: bool = False) -> None:
         self.quiet = quiet
-        self.console = Console() if Console else None
+        self.console = Console(no_color=no_color) if Console else None
 
     def print(self, value: object = "") -> None:
         if self.console:
@@ -320,7 +320,7 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if args.no_color:
         os.environ["NO_COLOR"] = "1"
-    output = Output(quiet=args.quiet)
+    output = Output(quiet=args.quiet, no_color=args.no_color)
     if args.command == "check":
         return check(output)
     if args.command == "analyze":

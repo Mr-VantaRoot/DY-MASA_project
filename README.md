@@ -264,7 +264,7 @@ The main source areas are:
 │       ├── db/           Models and database sessions
 │       ├── schemas/      API response models
 │       ├── services/     Job pipeline, events, cancellation, tool checks
-│       └── cli/          Static analysis CLI
+│       └── cli/          Shared static-analysis CLI and read-only views
 ├── dynamic/
 │   ├── adb/              ADB client and operation guardrails
 │   ├── emulator/         Device selection and emulator management
@@ -399,6 +399,71 @@ python -m app.cli.analyze_apk "/absolute/path/to/authorized-app.apk"
 ```
 
 Use a Linux absolute path on Fedora.
+
+### CLI edition
+
+The repository also includes a separate `dy-masa` launcher. It uses the same
+analysis engine, SQLAlchemy models, database, job queue, evidence, findings,
+reasoning, and reports as the web platform; it does not create a second CLI
+database or duplicate the analysis rules.
+
+The launcher resolves the repository root, works from another directory, and
+selects PostgreSQL or the canonical SQLite fallback before importing the
+application database engine:
+
+```bash
+/path/to/MASA/work/dy-masa --help
+/path/to/MASA/work/dy-masa check
+/path/to/MASA/work/dy-masa analyze "/path/to/authorized-app.apk"
+```
+
+Useful commands:
+
+```text
+dy-masa overview                         real job/result totals
+dy-masa jobs                             list persisted jobs
+dy-masa job JOB_ID                       inspect stages and report files
+dy-masa findings [--job-id JOB_ID]       list findings
+dy-masa evidence [--job-id JOB_ID]       list evidence
+dy-masa reasoning [--job-id JOB_ID]      show deterministic summaries
+dy-masa reports [--job-id JOB_ID]        list reports and file presence
+dy-masa dynamic status                   inspect ADB/emulator status
+dy-masa dynamic start JOB_ID             queue a safe dynamic run
+dy-masa dynamic events JOB_ID            show runtime stages
+dy-masa dynamic evidence JOB_ID          show runtime evidence
+dy-masa health                           check database and tools
+dy-masa config                           show non-secret configuration
+```
+
+Use `--quiet` for command output without the interactive banner and
+`--no-color` when terminal styling is not desired. `analyze` reports persisted
+job stages while it runs and returns nonzero for invalid input, failed or
+cancelled jobs, missing reports, or database failures. It uses the existing
+atomic worker claim and does not manually run individual analysis stages.
+
+The interactive CLI is started with no command and includes the same read-only
+views. Scan and dynamic actions remain explicit commands so a user cannot
+accidentally launch a device operation while navigating the menu.
+
+### CLI feature parity checklist
+
+| Web capability | CLI equivalent | Status |
+| --- | --- | --- |
+| Overview | `overview` | Implemented |
+| APK scan and progress | `analyze APK` | Implemented through shared job runner |
+| Findings and filters | `findings` | Implemented |
+| Evidence | `evidence` | Implemented |
+| Deterministic reasoning | `reasoning` | Implemented |
+| Reports | `reports`, `job JOB_ID` | Implemented with path/existence checks |
+| Jobs and stages | `jobs`, `job JOB_ID` | Implemented read-only |
+| Dynamic status/start/events/evidence | `dynamic ...` | Implemented through shared acceptance service |
+| Health | `health`, `check` | Implemented |
+| Terminal | Not duplicated | Not applicable; the CLI is already a local terminal process |
+
+The CLI refuses to delete active jobs and currently exposes no destructive job
+deletion command. Runtime device selection and ADB restrictions are inherited
+from the existing dynamic services; physical-device analysis remains an
+explicit configuration choice.
 
 ---
 
