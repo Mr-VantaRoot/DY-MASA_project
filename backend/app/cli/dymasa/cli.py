@@ -116,11 +116,12 @@ def _dependency_rows() -> list[tuple[str, str, str]]:
 def check(output: Output) -> int:
     """Report environment facts without creating a database or running analysis."""
 
+    from app.core.config import get_settings
     from .database import project_root
 
     output.screen("Tools & Environment", "configured paths and database selection (no tool execution)")
     output.print(f"Project root: {project_root()}")
-    output.print(f"Database URL: {_safe_database_url(os.environ.get('MOBILE_PENTEST_DATABASE_URL', 'not selected'))}")
+    output.print(f"Database URL: {_safe_database_url(get_settings().database_url)}")
     output.print(f"Storage directory: {project_root() / 'storage'}")
     for name, value, note in _dependency_rows():
         output.print(f"{name}: {value} ({note})")

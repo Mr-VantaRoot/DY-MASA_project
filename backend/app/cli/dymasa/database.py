@@ -43,12 +43,17 @@ def postgres_is_ready() -> bool:
 def configure_database_environment(root: Path | None = None) -> str:
     """Select the same database policy as the backend startup script.
 
-    The returned URL is set before any module that creates the SQLAlchemy engine
-    is imported. An explicitly configured PostgreSQL URL is retained when the
-    configured PostgreSQL service is ready; otherwise the canonical project
-    SQLite database is selected.
+    The returned URL is set before any module that creates the SQLAlchemy engine.
+    An explicitly configured URL is always retained. Only when no URL is
+    configured does readiness select PostgreSQL or the canonical project
+    SQLite database.
     """
 
+    # An explicit URL is an operator choice. Do not replace it with the local
+    # fallback merely because PostgreSQL readiness checks fail.
+    configured = os.environ.get("MOBILE_PENTEST_DATABASE_URL", "").strip()
+    if configured:
+        return configured
     if postgres_is_ready():
         return os.environ.get("MOBILE_PENTEST_DATABASE_URL", "postgresql (configured)")
     fallback = sqlite_url(root)

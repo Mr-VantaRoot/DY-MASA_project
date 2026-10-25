@@ -26,6 +26,14 @@ class CliStageATests(unittest.TestCase):
         ):
             self.assertEqual(database.configure_database_environment(Path("/tmp/project")), configured)
 
+    def test_explicit_database_url_is_retained_when_postgres_is_unavailable(self):
+        configured = "sqlite:///custom/masa.sqlite3"
+        with patch.object(database, "postgres_is_ready", return_value=False), patch.dict(
+            os.environ, {"MOBILE_PENTEST_DATABASE_URL": configured}, clear=True
+        ):
+            self.assertEqual(database.configure_database_environment(Path("/tmp/project")), configured)
+            self.assertEqual(os.environ["MOBILE_PENTEST_DATABASE_URL"], configured)
+
     def test_check_command_starts_without_database_import(self):
         self.assertEqual(main(["--quiet", "check"]), 0)
 

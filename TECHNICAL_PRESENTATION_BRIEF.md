@@ -27,6 +27,7 @@ The project uses real reverse engineering tools:
 
 - `apktool` for decoding APK resources and `AndroidManifest.xml`
 - `JADX` CLI for decompiling code into Java-like source
+- Ghidra headless, optionally, for native-library coverage and per-library analysis status
 - Python analysis modules for extracting evidence from decoded/decompiled files
 
 The app does not invent decompiled content. If apktool or JADX cannot decode something, the job records the tool failure or continues only when partial output is still useful.
@@ -170,18 +171,17 @@ Because an LLM would not fix poor evidence. The safer architecture is: extract r
 
 Findings are generated only from stored evidence records. Each finding carries evidence IDs that point back to APK-derived files.
 
-### What is the next technical improvement?
+### What are the next technical improvements?
 
-Add a code-risk analyzer for real insecure implementation patterns:
+The current code-risk analyzer already covers the listed pattern families. The
+next improvements are deeper data-flow validation, broader Android-version
+runtime coverage, and stronger correlation between static candidates and
+authorized runtime observations:
 
-- unsafe WebView settings
-- trust-all SSL code
-- weak crypto modes
-- hardcoded AES keys
-- HTTP endpoints
-- Firebase URLs/configuration
-- exported component intent handling
-- deeplink input handling
+- trace attacker-controlled input into sensitive sinks
+- validate WebView navigation and JavaScript-bridge context
+- expand runtime coverage without claiming exploitability from reachability
+- improve native-code findings beyond Ghidra coverage reporting
 
 ## Strong Closing Statement
 
