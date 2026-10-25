@@ -650,7 +650,6 @@ class PdfReportGenerator:
 
     @staticmethod
     def _table(rows: list[list[str]]) -> Table:
-        rows = [[escape(str(cell), quote=True) for cell in row] for row in rows]
         table = Table(rows, repeatRows=1)
         table.setStyle(
             TableStyle(

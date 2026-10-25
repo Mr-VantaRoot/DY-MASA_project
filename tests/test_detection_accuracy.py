@@ -180,6 +180,10 @@ class DetectionAccuracyTests(unittest.TestCase):
             self.assertTrue(output.exists())
             self.assertGreater(output.stat().st_size, 0)
 
+    def test_pdf_table_keeps_plain_text_entities_readable(self) -> None:
+        table = PdfReportGenerator()._table([["Header"], ["A & B < C > D"]])
+        self.assertEqual(table._cellvalues[1][0], "A & B < C > D")
+
     def test_incomplete_extraction_coverage_is_visible(self) -> None:
         item = type("Evidence", (), {
             "id": "limits",
