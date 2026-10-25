@@ -125,19 +125,23 @@ flowchart TD
 sequenceDiagram
     participant UI as Dashboard
     participant API as Backend
-    participant RT as DY-MASA
-    participant DEV as Android target
-    UI->>API: Start dynamic stage for completed static job
-    API->>RT: Queue runtime work
-    RT->>DEV: Select ready device and wait for boot
-    RT->>DEV: Capture baseline, install APK, launch app
-    RT->>DEV: Capture screenshot and logcat
-    RT->>RT: Classify logs and assess target-related crashes
-    loop Selected exported activities and deep links
-        RT->>DEV: Execute a bounded launch/reachability check
-        RT->>RT: Save isolated step log and validation result
+    participant RT as Runtime
+    participant DEV as Android device
+
+    UI->>API: Request dynamic analysis
+    API->>RT: Queue runtime job
+    RT->>DEV: Check device readiness
+    RT->>DEV: Capture baseline and install APK
+    RT->>DEV: Launch app and capture screenshot
+    RT->>DEV: Collect logcat
+    RT->>RT: Classify logs and check crashes
+
+    loop Each selected activity or deep link
+        RT->>DEV: Check launch and reachability
+        RT->>RT: Save step logs and validation result
     end
-    RT->>API: Persist runtime evidence and artifacts
+
+    RT->>API: Save runtime evidence and artifacts
     API->>API: Regenerate HTML and PDF reports
 ```
 
