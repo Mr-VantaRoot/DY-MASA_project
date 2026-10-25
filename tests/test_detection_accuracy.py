@@ -210,6 +210,44 @@ class DetectionAccuracyTests(unittest.TestCase):
         self.assertNotIn("Evidence examples", remediation)
         self.assertFalse(remediation.endswith(".."))
 
+    def test_manifest_to_findings_and_both_reports_preserve_normalized_data(self) -> None:
+        manifest = '''<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="x">
+          <application><receiver android:name="x.TestBroadcastReceiver" android:exported="true" /></application>
+        </manifest>'''
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            workspace_manifest = root / "storage" / "workspaces" / "job" / "apktool" / "AndroidManifest.xml"
+            workspace_manifest.parent.mkdir(parents=True)
+            workspace_manifest.write_text(manifest, encoding="utf-8")
+            extracted = ManifestEvidenceExtractor().extract(workspace_manifest.parent)
+            evidence = [
+                SimpleNamespace(
+                    id=f"e{index}", category=item.category, evidence_type=item.evidence_type,
+                    label=item.label, source_path=str(item.source_path), value_json=item.value_json,
+                )
+                for index, item in enumerate(extracted)
+            ]
+            findings = EvidenceFindingGenerator().generate(evidence)
+            job = SimpleNamespace(id="report-test", original_filename="sample.apk", sha256="abc", file_size_bytes=1)
+            report_dir = root / "storage" / "reports"
+            html_path = HtmlReportGenerator().generate(job, evidence, findings, [], report_dir)
+            pdf_path = PdfReportGenerator().generate(job, evidence, findings, [], report_dir)
+            table = PdfReportGenerator()._evidence_table(evidence, report_dir / "nested")
+            source_cell = table._cellvalues[1][3].getPlainText()
+            html = html_path.read_text(encoding="utf-8")
+            html_exists = html_path.exists()
+            pdf_exists = pdf_path.exists()
+
+        self.assertTrue(html_exists and pdf_exists)
+        self.assertTrue(any(finding.category == "Exported Components" for finding in findings))
+        self.assertIn("broadcast_receiver", html)
+        self.assertIn("TestBroadcastReceiver", html)
+        self.assertIn("workspaces/job/apktool/AndroidManifest.xml", html)
+        self.assertNotIn("/home/mrvantaroot", html)
+        self.assertIn("workspaces/job/apktool/AndroidManifest.xml", source_cell)
+        self.assertNotIn("/home/mrvantaroot", source_cell)
+        self.assertNotIn("Evidence examples", html)
+
     def test_cross_tool_secret_duplicates_merge_and_keep_source_references(self) -> None:
         with TemporaryDirectory() as temp:
             root = Path(temp)
@@ -221,7 +259,25 @@ class DetectionAccuracyTests(unittest.TestCase):
             normalized, counts = normalize_evidence_items(items)
         self.assertEqual(len(normalized), 1)
         self.assertEqual(counts["cross_tool_duplicates_removed"], 1)
+        self.assertEqual(counts["same_tool_duplicates_removed"], 0)
         self.assertEqual({item["tool"] for item in normalized[0].value["source_references"]}, {"apktool", "jadx"})
+
+    def test_same_tool_duplicate_is_counted_and_unrelated_records_are_preserved(self) -> None:
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            value = {"matched_value": "same-secret", "line": 4}
+            items = [
+                EvidenceItem(EvidenceCategory.code_secret, "possible_secret", "one", value, root / "apktool" / "a.xml", "line:4"),
+                EvidenceItem(EvidenceCategory.code_secret, "possible_secret", "duplicate", value, root / "apktool" / "a.xml", "line:4"),
+                EvidenceItem(EvidenceCategory.code_secret, "possible_secret", "different-line", {**value, "line": 5}, root / "apktool" / "a.xml", "line:5"),
+                EvidenceItem(EvidenceCategory.code_secret, "possible_secret", "unknown-source", {}, root / "unknown" / "a.xml", None),
+            ]
+            normalized, counts = normalize_evidence_items(items)
+        self.assertEqual(len(normalized), 3)
+        self.assertEqual(counts["raw_count"], 4)
+        self.assertEqual(counts["normalized_count"], 3)
+        self.assertEqual(counts["same_tool_duplicates_removed"], 1)
+        self.assertEqual(counts["cross_tool_duplicates_removed"], 0)
 
     def test_component_type_comes_from_manifest_tag_not_class_name(self) -> None:
         manifest = '''<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="x">

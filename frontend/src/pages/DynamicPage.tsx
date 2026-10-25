@@ -21,6 +21,7 @@ export function DynamicPage() {
   // A physical ADB device is a supported runtime target; an emulator is optional.
   const dynamicReady = Boolean(status?.adb_available && status?.ready_device);
   const latestEvent = events[events.length - 1];
+  const dynamicRun = [...events].reverse().find((event) => event.stage === "dynamic_run");
 
   async function refreshDynamicState() {
     try {
@@ -114,7 +115,12 @@ export function DynamicPage() {
               {activeJob ? (
                 <div>
                   <p className="text-lg font-bold break-all">{activeJob.original_filename}</p>
-                  <div className="mt-2"><StatusPill status={activeJob.status} /></div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-semibold text-muted-foreground uppercase">Static scan</span>
+                    <StatusPill status={activeJob.status} />
+                    <span className="text-xs font-semibold text-muted-foreground uppercase ml-2">DY-MASA</span>
+                    {dynamicRun ? <StatusPill status={dynamicRun.status as "queued" | "running" | "completed" | "failed" | "cancelled"} /> : <span className="text-xs text-muted-foreground">Not started</span>}
+                  </div>
                 </div>
               ) : (
                 <p className="text-muted-foreground">Select or complete a static scan first.</p>

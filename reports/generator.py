@@ -30,6 +30,26 @@ def _display_path(value: object, storage_root: Path | None = None) -> str:
     return path.name or str(value)
 
 
+def _display_evidence_sources(item: AnalysisEvidence, storage_root: Path | None = None) -> str:
+    try:
+        payload = json.loads(item.value_json)
+    except (TypeError, json.JSONDecodeError):
+        payload = {}
+    references = payload.get("source_references")
+    if isinstance(references, list):
+        displayed = []
+        for reference in references:
+            if not isinstance(reference, dict):
+                continue
+            displayed.append(
+                f"{reference.get('tool', 'source')}: "
+                f"{_display_path(reference.get('source_path', ''), storage_root)}"
+            )
+        if displayed:
+            return "; ".join(displayed)
+    return _display_path(item.source_path, storage_root)
+
+
 class HtmlReportGenerator:
     def generate(
         self,
@@ -284,7 +304,7 @@ class HtmlReportGenerator:
         for item in evidence[:80]:
             rows.append(
                 f"<tr><td>{escape(item.category.value)}</td><td>{escape(item.evidence_type)}</td>"
-                f"<td>{escape(item.label)}</td><td><code>{escape(_display_path(item.source_path, report_dir.parent))}</code></td></tr>"
+                f"<td>{escape(item.label)}</td><td><code>{escape(_display_evidence_sources(item, report_dir.parent))}</code></td></tr>"
             )
         body = "\n".join(rows) or '<tr><td colspan="4">No evidence extracted.</td></tr>'
         truncated = (
@@ -339,7 +359,8 @@ class HtmlReportGenerator:
                         "evidence normalization: "
                         f"{normalization.get('raw_count', 0)} raw records -> "
                         f"{normalization.get('normalized_count', 0)} persisted records; "
-                        f"{normalization.get('cross_tool_duplicates_removed', 0)} cross-tool duplicates removed"
+                        f"{normalization.get('cross_tool_duplicates_removed', 0)} cross-tool and "
+                        f"{normalization.get('same_tool_duplicates_removed', 0)} same-tool duplicates removed"
                     )
             limits_note = "<p><strong>Extraction coverage:</strong> reported for transparency; " + escape("; ".join(details) or "no limits reached") + ".</p>"
         return f"""
@@ -656,7 +677,8 @@ class PdfReportGenerator:
                         "evidence normalization: "
                         f"{normalization.get('raw_count', 0)} raw records -> "
                         f"{normalization.get('normalized_count', 0)} persisted records; "
-                        f"{normalization.get('cross_tool_duplicates_removed', 0)} cross-tool duplicates removed"
+                        f"{normalization.get('cross_tool_duplicates_removed', 0)} cross-tool and "
+                        f"{normalization.get('same_tool_duplicates_removed', 0)} same-tool duplicates removed"
                     )
             limits_note = [Paragraph(PdfReportGenerator._safe_text("Extraction coverage: " + ("; ".join(details) if details else "no limits reached") + "."), body)]
         return [
@@ -713,11 +735,20 @@ class PdfReportGenerator:
         ]
 
     def _evidence_table(self, evidence: list[AnalysisEvidence], report_dir: Path) -> Table:
-        rows = [["Category", "Type", "Label"]]
-        rows.extend([item.category.value, item.evidence_type, item.label] for item in evidence[:80])
+        rows = [["Category", "Type", "Label", "Source"]]
+        rows.extend(
+            [item.category.value, item.evidence_type, item.label, _display_evidence_sources(item, report_dir.parent)]
+            for item in evidence[:80]
+        )
         if len(rows) == 1:
-            rows.append(["-", "-", "No evidence extracted"])
-        return self._table(rows)
+            rows.append(["-", "-", "No evidence extracted", "-"])
+        table_rows = []
+        table_style = ParagraphStyle("EvidenceTable", parent=getSampleStyleSheet()["BodyText"], fontSize=7, leading=8)
+        for row in rows:
+            table_rows.append([Paragraph(self._safe_text(str(cell)), table_style) for cell in row])
+        table = self._table(table_rows)
+        table._argW = [0.85 * inch, 1.05 * inch, 2.35 * inch, 2.85 * inch]
+        return table
 
     @staticmethod
     def _table(rows: list[list[str]]) -> Table:

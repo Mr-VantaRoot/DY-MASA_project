@@ -66,62 +66,101 @@ class EvidenceItem:
 
 
 def _normalized_source_path(path: Path) -> str:
-    value = str(path)
-    for marker in ("/apktool/", "/jadx/"):
-        if marker in value:
-            value = value.split(marker, 1)[1]
-            if value.startswith("resources/"):
-                value = value.removeprefix("resources/")
-            return value
-    return value
+    parts = list(Path(path).parts)
+    for tool in ("apktool", "jadx"):
+        if tool not in parts:
+            continue
+        relative = parts[parts.index(tool) + 1:]
+        if tool == "jadx" and relative[:1] == ["resources"]:
+            relative = relative[1:]
+        return "/".join(relative)
+    return str(path)
+
+
+def _source_tool(path: Path) -> str | None:
+    parts = set(Path(path).parts)
+    if "apktool" in parts:
+        return "apktool"
+    if "jadx" in parts:
+        return "jadx"
+    return None
 
 
 def normalize_evidence_items(items: list[EvidenceItem]) -> tuple[list[EvidenceItem], dict[str, int]]:
-    """Merge equivalent cross-tool secret records while retaining every source."""
+    """Merge equivalent secret records while accounting for every input record."""
     groups: dict[tuple[object, ...], list[EvidenceItem]] = {}
-    passthrough: list[EvidenceItem] = []
     for item in items:
         if item.category != EvidenceCategory.code_secret:
-            passthrough.append(item)
             continue
         value = item.value
+        tool = _source_tool(item.source_path)
         normalized_source = _normalized_source_path(item.source_path)
+        if tool is None or value.get("matched_value") is None or value.get("line") is None:
+            continue
         key = (
             item.evidence_type,
             value.get("matched_value"),
-            value.get("line"),
+            str(value.get("line")),
             normalized_source,
+            item.source_node,
         )
         groups.setdefault(key, []).append(item)
 
     normalized: list[EvidenceItem] = []
-    duplicates_removed = 0
+    cross_tool_duplicates_removed = 0
+    same_tool_duplicates_removed = 0
     for item in items:
         if item.category != EvidenceCategory.code_secret:
             normalized.append(item)
             continue
         value = item.value
+        tool = _source_tool(item.source_path)
         normalized_source = _normalized_source_path(item.source_path)
-        group = groups[(item.evidence_type, value.get("matched_value"), value.get("line"), normalized_source)]
-        if group[0] is not item:
-            continue
-        tools = {"jadx" if "/jadx/" in str(candidate.source_path) else "apktool" for candidate in group}
-        if len(tools) < 2:
+        key = (
+            item.evidence_type,
+            value.get("matched_value"),
+            str(value.get("line")),
+            normalized_source,
+            item.source_node,
+        )
+        group = groups.get(key) if tool is not None and value.get("matched_value") is not None and value.get("line") is not None else None
+        if not group:
             normalized.append(item)
             continue
+        if group[0] is not item:
+            continue
+        tools = {_source_tool(candidate.source_path) for candidate in group}
+        tools.discard(None)
+        if len(group) == 1:
+            normalized.append(item)
+            continue
+        if len(tools) < 2 and len(group) > 1:
+            same_tool_duplicates_removed += len(group) - 1
+        elif len(tools) >= 2:
+            same_tool_removed = sum(
+                max(0, sum(_source_tool(candidate.source_path) == current_tool for candidate in group) - 1)
+                for current_tool in tools
+            )
+            same_tool_duplicates_removed += same_tool_removed
+            cross_tool_duplicates_removed += len(group) - 1 - same_tool_removed
         references = [
             {
                 "label": candidate.label,
                 "source_path": str(candidate.source_path),
                 "source_node": candidate.source_node,
-                "tool": "jadx" if "/jadx/" in str(candidate.source_path) else "apktool",
+                "tool": _source_tool(candidate.source_path),
             }
             for candidate in group
         ]
         merged_value = {**value, "source_references": references, "source_tools": sorted(tools)}
-        normalized.append(replace(item, value=merged_value, label=f"{item.evidence_type} in {Path(normalized_source).name}:{value.get('line')} (cross-tool sources: {', '.join(sorted(tools))})"))
-        duplicates_removed += len(group) - 1
-    return normalized, {"raw_count": len(items), "normalized_count": len(normalized), "cross_tool_duplicates_removed": duplicates_removed}
+        source_label = "cross-tool sources" if len(tools) >= 2 else "duplicate sources"
+        normalized.append(replace(item, value=merged_value, label=f"{item.evidence_type} in {Path(normalized_source).name}:{value.get('line')} ({source_label}: {', '.join(sorted(tools))})"))
+    return normalized, {
+        "raw_count": len(items),
+        "normalized_count": len(normalized),
+        "cross_tool_duplicates_removed": cross_tool_duplicates_removed,
+        "same_tool_duplicates_removed": same_tool_duplicates_removed,
+    }
 
 
 class ManifestEvidenceExtractor:
