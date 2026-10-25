@@ -14,9 +14,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.api.routes.jobs import _events_after, _resolve_storage_file, stream_job_events
-from app.api.routes.dynamic import _manager
+from app.api.routes.dynamic import _manager, start_dynamic_analysis
 from app.core.config import Settings
-from app.db.base import AnalysisArtifact, AnalysisEvidence, AnalysisFinding, AnalysisJob, AnalysisJobStatus, AnalysisReasoning, AnalysisReport, ArtifactType, Base, EvidenceCategory, FindingSeverity
+from app.db.base import AnalysisArtifact, AnalysisEvidence, AnalysisFinding, AnalysisJob, AnalysisJobStage, AnalysisJobStatus, AnalysisReasoning, AnalysisReport, ArtifactType, Base, EvidenceCategory, FindingSeverity
 from app.services.job_events import JobEventStore, JobStageEvent, emit_job_event, job_event_store
 from app.services.job_service import JobRunner, JobService, _job_finished, _submitted_jobs, analysis_executor, cleanup_interrupted_jobs, dispatch_queued_jobs
 from ai.reasoning import AttackPath, ReasoningResult
@@ -208,6 +208,77 @@ class ConfirmedBugTests(unittest.TestCase):
                 self.assertEqual(recovered.status, AnalysisJobStatus.queued)
                 self.assertTrue(Path(recovered.apk_path).name == "restart.apk")
 
+    def test_restart_recovers_only_interrupted_dynamic_runs(self) -> None:
+        with TemporaryDirectory() as temp:
+            engine = create_engine(f"sqlite+pysqlite:///{Path(temp) / 'dynamic-restart.db'}")
+            Base.metadata.create_all(engine)
+            sessions = sessionmaker(bind=engine)
+            with sessions() as db:
+                db.add(AnalysisJob(
+                    id="dynamic-restart-job",
+                    original_filename="dynamic.apk",
+                    stored_filename="dynamic.apk",
+                    apk_path="/tmp/dynamic.apk",
+                    file_size_bytes=1,
+                    sha256="a" * 64,
+                    status=AnalysisJobStatus.completed,
+                    current_step="Static reports generated",
+                ))
+                db.add_all([
+                    AnalysisJobStage(job_id="dynamic-restart-job", stage="dynamic_run", status="running", message="running", detail="active"),
+                    AnalysisJobStage(job_id="dynamic-restart-job", stage="dynamic_run", status="completed", message="done", detail="complete"),
+                    AnalysisJobStage(job_id="dynamic-restart-job", stage="dynamic_run", status="failed", message="failed", detail="failure"),
+                ])
+                db.commit()
+            session = sessions()
+            context = MagicMock()
+            context.__enter__.return_value = session
+            context.__exit__.side_effect = lambda *_args: session.close()
+            with patch("app.db.session.SessionLocal", return_value=context):
+                self.assertEqual(cleanup_interrupted_jobs(SimpleNamespace()), 1)
+            with sessions() as db:
+                stages = db.query(AnalysisJobStage).order_by(AnalysisJobStage.created_at.asc()).all()
+                self.assertEqual([stage.status for stage in stages], ["failed", "completed", "failed"])
+                self.assertEqual(stages[0].message, "DY-MASA analysis interrupted by backend restart")
+            session2 = sessions()
+            context2 = MagicMock()
+            context2.__enter__.return_value = session2
+            context2.__exit__.side_effect = lambda *_args: session2.close()
+            with patch("app.db.session.SessionLocal", return_value=context2):
+                self.assertEqual(cleanup_interrupted_jobs(SimpleNamespace()), 0)
+            with sessions() as db:
+                self.assertEqual(db.query(AnalysisJobStage).count(), 3)
+            with sessions() as db, patch("app.api.routes.dynamic.submit_dynamic_job", return_value=True):
+                response = start_dynamic_analysis("dynamic-restart-job", db=db, settings=Settings())
+                self.assertEqual(response["status"], "accepted")
+
+    def test_dynamic_evidence_and_artifacts_deduplicate_only_identical_records(self) -> None:
+        with TemporaryDirectory() as temp:
+            engine = create_engine(f"sqlite+pysqlite:///{Path(temp) / 'dynamic-dedupe.db'}")
+            Base.metadata.create_all(engine)
+            sessions = sessionmaker(bind=engine)
+            with sessions() as db:
+                job = AnalysisJob(
+                    id="dynamic-dedupe-job",
+                    original_filename="dynamic.apk",
+                    stored_filename="dynamic.apk",
+                    apk_path="/tmp/dynamic.apk",
+                    file_size_bytes=1,
+                    status=AnalysisJobStatus.completed,
+                    current_step="Complete",
+                )
+                db.add(job)
+                db.commit()
+                orchestrator = DynamicRuntimeOrchestrator(SimpleNamespace(), adb=MagicMock(), manager=MagicMock())
+                orchestrator._record_evidence(db, job, "dynamic_test", "same", {"path": "a", "value": 1})
+                orchestrator._record_evidence(db, job, "dynamic_test", "same", {"path": "a", "value": 1})
+                orchestrator._record_evidence(db, job, "dynamic_test", "different", {"path": "a", "value": 1})
+                orchestrator._record_artifact(db, job, Path(temp) / "step.txt", "adb-logcat-step", 0)
+                orchestrator._record_artifact(db, job, Path(temp) / "step.txt", "adb-logcat-step", 0)
+                orchestrator._record_artifact(db, job, Path(temp) / "other.txt", "adb-logcat-step", 0)
+                self.assertEqual(db.query(AnalysisEvidence).count(), 2)
+                self.assertEqual(db.query(AnalysisArtifact).count(), 2)
+
     def test_worker_failure_releases_slot_and_dispatches_next_job(self) -> None:
         settings = SimpleNamespace(max_concurrent_analysis_jobs=1)
         _submitted_jobs.add("failed-worker")
@@ -339,7 +410,7 @@ class ConfirmedBugTests(unittest.TestCase):
             )
             db = MagicMock()
             db.scalars.side_effect = [SimpleNamespace(all=lambda: [item]), SimpleNamespace(all=lambda: [])]
-            with patch.object(orchestrator, "_record_evidence") as record:
+            with patch.object(orchestrator, "_record_evidence") as record, patch.object(orchestrator, "_record_artifact"):
                 orchestrator._validate_static_attack_surface(db, SimpleNamespace(id="job"), "device", "example.app", Path(temp))
             self.assertFalse(any(call[0] == "shell" for call in adb.method_calls))
             self.assertTrue(record.called)

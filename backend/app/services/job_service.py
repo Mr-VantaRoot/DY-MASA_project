@@ -763,6 +763,14 @@ def cleanup_interrupted_jobs(settings: Settings) -> int:
                 )
             ).all()
         )
+        dynamic_stages = list(
+            db.scalars(
+                select(AnalysisJobStage).where(
+                    AnalysisJobStage.stage == "dynamic_run",
+                    AnalysisJobStage.status == "running",
+                )
+            ).all()
+        )
         for job in jobs:
             job.status = AnalysisJobStatus.queued
             job.error_message = "Interrupted by backend restart; queued for resumption"
@@ -770,10 +778,23 @@ def cleanup_interrupted_jobs(settings: Settings) -> int:
             job.progress = 0
             job.completed_at = None
             job.updated_at = datetime.utcnow()
+        for stage in dynamic_stages:
+            stage.status = "failed"
+            stage.message = "DY-MASA analysis interrupted by backend restart"
+            stage.detail = "The previous runtime worker stopped before completion; a new DY-MASA run may be started."
         db.commit()
         for job in jobs:
             emit_job_event(job.id, "job_requeued", "queued", job.current_step, job.error_message, db=db)
-        return len(jobs)
+        for stage in dynamic_stages:
+            emit_job_event(
+                stage.job_id,
+                "dynamic_run_recovered",
+                "failed",
+                stage.message,
+                stage.detail,
+                db=db,
+            )
+        return len(jobs) + len(dynamic_stages)
 
 
 def dispatch_queued_jobs(settings: Settings) -> int:

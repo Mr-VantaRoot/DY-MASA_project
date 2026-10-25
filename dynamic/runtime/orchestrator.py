@@ -278,15 +278,28 @@ class DynamicRuntimeOrchestrator:
         emit_job_event(job.id, stage, status, message, detail, db=db)
 
     def _record_evidence(self, db: Session, job: AnalysisJob, evidence_type: str, label: str, value: dict[str, object]) -> None:
-        db.add(AnalysisEvidence(
-            job_id=job.id,
-            category=EvidenceCategory.runtime,
-            evidence_type=evidence_type,
-            label=label,
-            value_json=json.dumps(value, sort_keys=True),
-            source_path=value.get("path") or value.get("logcat_path") or "adb",
-            source_node="dynamic-runtime",
-        ))
+        value_json = json.dumps(value, sort_keys=True)
+        source_path = str(value.get("path") or value.get("logcat_path") or "adb")
+        identity = (evidence_type, label, value_json, source_path, "dynamic-runtime")
+        existing = {
+            (item.evidence_type, item.label, item.value_json, item.source_path, item.source_node)
+            for item in db.scalars(
+                select(AnalysisEvidence).where(
+                    AnalysisEvidence.job_id == job.id,
+                    AnalysisEvidence.category == EvidenceCategory.runtime,
+                )
+            ).all()
+        }
+        if identity not in existing:
+            db.add(AnalysisEvidence(
+                job_id=job.id,
+                category=EvidenceCategory.runtime,
+                evidence_type=evidence_type,
+                label=label,
+                value_json=value_json,
+                source_path=source_path,
+                source_node="dynamic-runtime",
+            ))
         db.commit()
 
     def _record_command_artifact(self, db: Session, job: AnalysisJob, path: Path, tool_name: str, result: AdbResult) -> None:
@@ -294,13 +307,24 @@ class DynamicRuntimeOrchestrator:
         self._record_artifact(db, job, path, tool_name, result.exit_code)
 
     def _record_artifact(self, db: Session, job: AnalysisJob, path: Path, tool_name: str, exit_code: int | None = 0) -> None:
-        db.add(AnalysisArtifact(
-            job_id=job.id,
-            artifact_type=ArtifactType.dynamic_artifact,
-            tool_name=tool_name,
-            path=str(path),
-            exit_code=exit_code,
-        ))
+        identity = (ArtifactType.dynamic_artifact, tool_name, str(path), exit_code)
+        duplicate = db.scalars(
+            select(AnalysisArtifact).where(
+                AnalysisArtifact.job_id == job.id,
+                AnalysisArtifact.artifact_type == ArtifactType.dynamic_artifact,
+                AnalysisArtifact.tool_name == tool_name,
+                AnalysisArtifact.path == str(path),
+                AnalysisArtifact.exit_code == exit_code,
+            )
+        ).first()
+        if duplicate is None:
+            db.add(AnalysisArtifact(
+                job_id=job.id,
+                artifact_type=identity[0],
+                tool_name=identity[1],
+                path=identity[2],
+                exit_code=identity[3],
+            ))
         db.commit()
 
     @staticmethod
