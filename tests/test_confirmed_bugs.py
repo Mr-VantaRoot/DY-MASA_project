@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 import asyncio
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import HTTPException
 from sqlalchemy import create_engine
@@ -14,9 +15,9 @@ from sqlalchemy.orm import sessionmaker
 from app.api.routes.jobs import _events_after, _resolve_storage_file, stream_job_events
 from app.api.routes.dynamic import _manager
 from app.core.config import Settings
-from app.db.base import AnalysisJobStatus, Base
+from app.db.base import AnalysisJob, AnalysisJobStatus, Base
 from app.services.job_events import JobEventStore, JobStageEvent, emit_job_event, job_event_store
-from app.services.job_service import JobService, analysis_executor, dispatch_queued_jobs
+from app.services.job_service import JobRunner, JobService, _job_finished, _submitted_jobs, analysis_executor, cleanup_interrupted_jobs, dispatch_queued_jobs
 from dynamic.adb.client import AdbResult
 from dynamic.runtime.orchestrator import DynamicAnalysisError, DynamicRuntimeOrchestrator
 
@@ -137,6 +138,68 @@ class ConfirmedBugTests(unittest.TestCase):
             self.assertEqual(dispatch_queued_jobs(settings), 2)
         self.assertEqual(submit.call_count, 2)
         self.assertEqual(fake_db.execute.call_count, 4)
+
+    def test_concurrent_database_claim_allows_only_one_worker(self) -> None:
+        with TemporaryDirectory() as temp:
+            engine = create_engine(f"sqlite+pysqlite:///{Path(temp) / 'claim.db'}")
+            Base.metadata.create_all(engine)
+            sessions = sessionmaker(bind=engine)
+            with sessions() as db:
+                db.add(AnalysisJob(
+                    id="claim-job",
+                    original_filename="claim.apk",
+                    stored_filename="claim.apk",
+                    apk_path="/tmp/claim.apk",
+                    file_size_bytes=1,
+                    status=AnalysisJobStatus.queued,
+                    current_step="Queued",
+                ))
+                db.commit()
+
+            def claim() -> bool:
+                with sessions() as db:
+                    return JobRunner._claim_job(db, "claim-job")
+
+            with ThreadPoolExecutor(max_workers=2) as workers:
+                results = list(workers.map(lambda _index: claim(), (1, 2)))
+            self.assertEqual(sum(results), 1)
+            with sessions() as db:
+                self.assertEqual(db.get(AnalysisJob, "claim-job").status, AnalysisJobStatus.running)
+
+    def test_restart_requeues_interrupted_work_without_deleting_it(self) -> None:
+        with TemporaryDirectory() as temp:
+            engine = create_engine(f"sqlite+pysqlite:///{Path(temp) / 'restart.db'}")
+            Base.metadata.create_all(engine)
+            sessions = sessionmaker(bind=engine)
+            with sessions() as db:
+                db.add(AnalysisJob(
+                    id="restart-job",
+                    original_filename="restart.apk",
+                    stored_filename="restart.apk",
+                    apk_path="/tmp/restart.apk",
+                    file_size_bytes=1,
+                    status=AnalysisJobStatus.running,
+                    current_step="Running JADX",
+                ))
+                db.commit()
+            context = MagicMock()
+            session = sessions()
+            context.__enter__.return_value = session
+            context.__exit__.side_effect = lambda *_args: session.close()
+            with patch("app.db.session.SessionLocal", return_value=context):
+                self.assertEqual(cleanup_interrupted_jobs(SimpleNamespace()), 1)
+            with sessions() as db:
+                recovered = db.get(AnalysisJob, "restart-job")
+                self.assertEqual(recovered.status, AnalysisJobStatus.queued)
+                self.assertTrue(Path(recovered.apk_path).name == "restart.apk")
+
+    def test_worker_failure_releases_slot_and_dispatches_next_job(self) -> None:
+        settings = SimpleNamespace(max_concurrent_analysis_jobs=1)
+        _submitted_jobs.add("failed-worker")
+        with patch("app.services.job_service._dispatch_available") as dispatch:
+            _job_finished("failed-worker", settings)
+        self.assertNotIn("failed-worker", _submitted_jobs)
+        dispatch.assert_called_once_with(settings)
 
     def _settings(self, root: Path) -> SimpleNamespace:
         return SimpleNamespace(

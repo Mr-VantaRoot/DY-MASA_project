@@ -19,6 +19,7 @@ class JobStageEvent:
     message: str
     detail: str | None = None
     timestamp: str = ""
+    cursor: str = ""
 
 
 class JobEventStore:
@@ -88,11 +89,11 @@ class JobEventStore:
             # Clear is intentionally cache-only and never touches durable history.
             self._condition.notify_all()
 
-    def wait_for(self, job_id: str, after_event_id: int = 0, timeout_seconds: float = 2.0) -> list[JobStageEvent]:
+    def wait_for(self, job_id: str, after_event_id: int | str = 0, timeout_seconds: float = 2.0) -> list[JobStageEvent]:
         with self._condition:
             deadline = datetime.utcnow().timestamp() + timeout_seconds
             while True:
-                new_events = [event for event in self._history.get(job_id, []) if self._after(event.event_id, after_event_id)]
+                new_events = [event for event in self._history.get(job_id, []) if self._after_cursor(event.event_id, after_event_id)]
                 if new_events:
                     return new_events
                 remaining = deadline - datetime.utcnow().timestamp()
@@ -108,6 +109,18 @@ class JobEventStore:
         if event_id < 0 and after_event_id < 0:
             return event_id < after_event_id
         return event_id > after_event_id or (after_event_id == 0 and event_id < 0)
+
+    @classmethod
+    def _after_cursor(cls, event_id: int, cursor: int | str) -> bool:
+        if isinstance(cursor, str) and cursor.startswith("p:"):
+            try:
+                parts = dict(part.split(":", 1) for part in cursor.split(";") if ":" in part)
+                persisted = int(parts.get("p", 0))
+                memory = int(parts.get("m", 0))
+                return (event_id < 0 and abs(event_id) > memory) or (event_id >= 0 and event_id > persisted)
+            except (TypeError, ValueError):
+                return True
+        return cls._after(event_id, int(cursor))
 
 
 job_event_store = JobEventStore()
@@ -159,4 +172,5 @@ def as_event_payload(event: JobStageEvent) -> dict[str, Any]:
         "message": event.message,
         "detail": event.detail,
         "timestamp": event.timestamp,
+        "cursor": event.cursor,
     }

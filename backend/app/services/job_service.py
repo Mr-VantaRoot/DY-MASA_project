@@ -11,7 +11,7 @@ from threading import RLock
 import zipfile
 
 from fastapi import UploadFile
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from ai.reasoning import DeterministicReasoningEngine, ReasoningResult
@@ -346,7 +346,15 @@ class JobRunner(_JobStorageHelpers):
 
         with SessionLocal() as db:
             job = db.get(AnalysisJob, job_id)
-            if job is None or job.status != AnalysisJobStatus.queued:
+            if job is None:
+                return
+            if job.status == AnalysisJobStatus.queued and not self._claim_job(db, job_id):
+                return
+            if job.status not in {AnalysisJobStatus.queued, AnalysisJobStatus.running}:
+                return
+            db.expire_all()
+            job = db.get(AnalysisJob, job_id)
+            if job is None:
                 return
 
             cancel_event = job_cancellation_registry.register(job_id)
@@ -380,6 +388,20 @@ class JobRunner(_JobStorageHelpers):
                     self._fail_job(db, job, "APK analysis preparation failed", str(exc))
             finally:
                 job_cancellation_registry.clear(job_id)
+
+    @staticmethod
+    def _claim_job(db: Session, job_id: str) -> bool:
+        """Atomically reserve a queued job for one worker across dispatchers."""
+        result = db.execute(
+            update(AnalysisJob)
+            .where(AnalysisJob.id == job_id, AnalysisJob.status == AnalysisJobStatus.queued)
+            .values(status=AnalysisJobStatus.running, current_step="Analysis worker claimed job", updated_at=datetime.utcnow())
+        )
+        if result.rowcount != 1:
+            db.rollback()
+            return False
+        db.commit()
+        return True
 
     def _prepare_workspace(self, db: Session, job: AnalysisJob) -> Path:
         self._mark(db, job, AnalysisJobStatus.running, 20, "Creating analysis workspace")
@@ -714,13 +736,15 @@ def cleanup_interrupted_jobs(settings: Settings) -> int:
             ).all()
         )
         for job in jobs:
-            job.status = AnalysisJobStatus.failed
-            job.error_message = "Interrupted by backend restart"
-            job.current_step = "Interrupted by backend restart"
+            job.status = AnalysisJobStatus.queued
+            job.error_message = "Interrupted by backend restart; queued for resumption"
+            job.current_step = "Queued after backend restart"
+            job.progress = 0
+            job.completed_at = None
             job.updated_at = datetime.utcnow()
         db.commit()
         for job in jobs:
-            emit_job_event(job.id, "job_failed", "failed", job.current_step, job.error_message, db=db)
+            emit_job_event(job.id, "job_requeued", "queued", job.current_step, job.error_message, db=db)
         return len(jobs)
 
 

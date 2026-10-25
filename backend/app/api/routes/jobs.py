@@ -1,6 +1,7 @@
 import json
 import asyncio
 import time
+from dataclasses import replace
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile, status
@@ -58,6 +59,23 @@ def _resolve_storage_file(path: Path, storage_root: Path, resource_name: str) ->
     return resolved
 
 
+def _parse_event_cursor(value: int | str | None) -> tuple[int, int]:
+    if isinstance(value, int):
+        return (value, 0) if value >= 0 else (0, abs(value))
+    if not isinstance(value, (int, str)) or not value:
+        return 0, 0
+    try:
+        if value.startswith("p:"):
+            parts = dict(part.split(":", 1) for part in value.split(";") if ":" in part)
+            return int(parts.get("p", 0)), int(parts.get("m", 0))
+    except (TypeError, ValueError):
+        pass
+    try:
+        return (int(value), 0) if int(value) >= 0 else (0, abs(int(value)))
+    except (TypeError, ValueError):
+        return 0, 0
+
+
 def _persistent_events(job_id: str, after_event_id: int = 0) -> list[JobStageEvent]:
     with SessionLocal() as db:
         rows = db.scalars(
@@ -79,21 +97,29 @@ def _persistent_events(job_id: str, after_event_id: int = 0) -> list[JobStageEve
 
 
 def _events_after(job_id: str, after_event_id: int = 0) -> list[JobStageEvent]:
-    """Merge durable history and the live cache without duplicate event IDs."""
-    events_by_id = {event.event_id: event for event in _persistent_events(job_id, after_event_id)}
-    for event in job_event_store.snapshot(job_id, after_event_id=after_event_id):
-        events_by_id.setdefault(event.event_id, event)
-    return [
-        event
-        for _, event in sorted(
-            events_by_id.items(),
-            key=lambda pair: (-pair[0] if pair[0] < 0 else pair[0], pair[0] < 0),
-        )
-    ]
+    """Merge history using a composite cursor: persisted DB ID plus cache ordinal."""
+    persisted_after, memory_after = _parse_event_cursor(after_event_id)
+    events_by_id = {event.event_id: event for event in _persistent_events(job_id, persisted_after)}
+    for event in job_event_store.snapshot(job_id, after_event_id=0):
+        if (event.event_id < 0 and abs(event.event_id) > memory_after) or (event.event_id >= 0 and event.event_id > persisted_after):
+            events_by_id.setdefault(event.event_id, event)
+    ordered = sorted(
+        events_by_id.values(),
+        key=lambda event: (-event.event_id if event.event_id < 0 else event.event_id, event.event_id < 0),
+    )
+    current_persisted, current_memory = persisted_after, memory_after
+    result: list[JobStageEvent] = []
+    for event in ordered:
+        if event.event_id < 0:
+            current_memory = max(current_memory, abs(event.event_id))
+        else:
+            current_persisted = max(current_persisted, event.event_id)
+        result.append(replace(event, cursor=f"p:{current_persisted};m:{current_memory}"))
+    return result
 
 
 def _sse_event(event: JobStageEvent) -> str:
-    return f"id: {event.event_id}\ndata: {json.dumps(as_event_payload(event))}\n\n"
+    return f"id: {event.cursor or event.event_id}\ndata: {json.dumps(as_event_payload(event))}\n\n"
 
 
 @router.post("", response_model=AnalysisJobResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -169,21 +195,18 @@ def stream_job_events(
     job_id: str,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
-    last_event_id: int | None = Header(default=None, alias="Last-Event-ID"),
+    last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
 ) -> StreamingResponse:
     if JobService(db, settings).get_job(job_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis job not found.")
 
     async def event_stream() -> object:
-        current_event_id = last_event_id if isinstance(last_event_id, int) else 0
+        current_event_id: int | str = last_event_id if isinstance(last_event_id, (int, str)) else 0
         terminal_event_seen = False
         terminal_deadline: float | None = None
         initial_events = _events_after(job_id, current_event_id)
         for event in initial_events:
-            if event.event_id < 0:
-                current_event_id = event.event_id if current_event_id >= 0 else min(current_event_id, event.event_id)
-            else:
-                current_event_id = max(current_event_id, event.event_id)
+            current_event_id = event.cursor
             terminal_event_seen = terminal_event_seen or event.stage in TERMINAL_EVENT_STAGES
             yield _sse_event(event)
         if terminal_event_seen:
@@ -195,10 +218,7 @@ def stream_job_events(
             await asyncio.to_thread(job_event_store.wait_for, job_id, current_event_id, 2.0)
             new_events = _events_after(job_id, current_event_id)
             for event in new_events:
-                if event.event_id < 0:
-                    current_event_id = event.event_id if current_event_id >= 0 else min(current_event_id, event.event_id)
-                else:
-                    current_event_id = max(current_event_id, event.event_id)
+                current_event_id = event.cursor
                 terminal_event_seen = terminal_event_seen or event.stage in TERMINAL_EVENT_STAGES
                 yield _sse_event(event)
             if terminal_event_seen:
@@ -217,12 +237,14 @@ def stream_job_events(
                 if terminal_deadline is None:
                     terminal_deadline = time.monotonic() + TERMINAL_EVENT_GRACE_SECONDS
                 elif time.monotonic() >= terminal_deadline:
+                    fallback_persisted, fallback_memory = _parse_event_cursor(current_event_id)
                     fallback = JobStageEvent(
-                        event_id=current_event_id + 1,
+                        event_id=fallback_persisted + 1,
                         stage=f"job_{getattr(job.status, 'value', job.status)}",
                         status=getattr(job.status, "value", job.status),
                         message=job.current_step,
                         detail=job.error_message,
+                        cursor=f"p:{fallback_persisted + 1};m:{fallback_memory}",
                     )
                     yield _sse_event(fallback)
                     return
