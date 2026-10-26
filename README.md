@@ -3,8 +3,9 @@
 **Evidence-backed Android application security assessment: static analysis (MASA) and ADB runtime validation (DY-MASA), in one local web app.**
 
 <p align="center">
-  <img src="assets/branding/masa-logo.png" alt="MASA — Mobile Application Security Analyzer" width="300">
-  <img src="https://raw.githubusercontent.com/Mr-VantaRoot/DY-MASA_project/feature/cli-stage-a/assets/MASA-CLI.png" alt="MASA CLI" width="300">
+  <img src="assets/branding/masa-logo.png" alt="MASA — Mobile Application Security Analyzer" width="280" height="280">
+  &nbsp;&nbsp;&nbsp;
+  <img src="https://raw.githubusercontent.com/Mr-VantaRoot/DY-MASA_project/feature/cli-stage-a/assets/MASA-CLI.png" alt="MASA CLI" width="280" height="280">
 </p>
 
 MASA stands for **Mobile Application Security Analyzer**. The logo represents
