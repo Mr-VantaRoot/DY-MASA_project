@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from app.cli.dymasa.cli import _banner, _interactive_dynamic, _interactive_history, _interactive_scan, _safe_database_url, interactive, main
+from app.cli.dymasa.cli import DatabaseNotReadyError, _banner, _interactive_dynamic, _interactive_history, _interactive_scan, _safe_database_url, interactive, main
 from app.cli.dymasa.runner import run_analysis
 from app.cli.dymasa.ui import TerminalUI
 
@@ -91,8 +91,23 @@ class CliPolishTests(unittest.TestCase):
     def test_invalid_apk_path_returns_failure_without_fabricating_a_job(self):
         output = _Output()
         settings = object()
-        self.assertEqual(run_analysis(Path("/tmp/definitely-missing-dy-masa.apk"), settings, output, 0.01), 1)
+        self.assertEqual(run_analysis(Path("/tmp/definitely-missing-dy-masa.apk"), settings, output, 0.01), 2)
         self.assertTrue(any("could not be started" in message for message in output.messages))
+
+    def test_invalid_analyze_path_returns_usage_code_before_database_access(self):
+        self.assertEqual(main(["--quiet", "analyze", "/tmp/no-such-dy-masa.apk"]), 2)
+
+    def test_uninitialized_database_returns_not_ready_code(self):
+        with patch(
+            "app.cli.dymasa.cli._require_analysis_tables",
+            side_effect=DatabaseNotReadyError("Database is not initialized"),
+        ):
+            self.assertEqual(main(["--quiet", "jobs"]), 3)
+
+    def test_init_command_dispatches_to_schema_initializer(self):
+        with patch("app.cli.dymasa.cli.init_database", return_value=0) as init:
+            self.assertEqual(main(["--quiet", "init"]), 0)
+        init.assert_called_once()
 
     def test_interactive_scan_rejects_invalid_path_before_configuration(self):
         output = _InteractiveOutput(["/tmp/no-such-file.apk"])

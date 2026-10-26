@@ -3,13 +3,23 @@
 from __future__ import annotations
 
 import time
+import os
 from pathlib import Path
 from typing import Any
 
-from . import read
-
-
 TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
+
+
+def _invalid_apk_path(path: Path) -> str | None:
+    if not path.exists():
+        return f"APK does not exist: {path}"
+    if not path.is_file():
+        return f"APK path is not a file: {path}"
+    if path.suffix.lower() != ".apk":
+        return f"Input must have a .apk extension: {path}"
+    if not os.access(path, os.R_OK):
+        return f"APK is not readable: {path}"
+    return None
 
 
 def final_exit_code(details: dict[str, Any]) -> int:
@@ -25,9 +35,8 @@ def final_exit_code(details: dict[str, Any]) -> int:
 
 
 def _database_session():
-    from app.db.session import SessionLocal, ensure_local_schema_updates
+    from app.db.session import SessionLocal
 
-    ensure_local_schema_updates()
     return SessionLocal()
 
 
@@ -40,10 +49,24 @@ def run_analysis(
 ) -> int:
     """Create one job and monitor the existing worker until a terminal state."""
 
+    from .database import analysis_tables_exist
     from app.services.job_service import JobService, submit_analysis_job
     from app.services.job_control import job_cancellation_registry
 
+    invalid = _invalid_apk_path(apk_path)
+    if invalid:
+        output.print(f"Analysis could not be started: {invalid}")
+        return 2
+    if not analysis_tables_exist():
+        output.print(
+            "Database is not initialized (no analysis tables found). "
+            "Run `dy-masa init`, or start the web backend once."
+        )
+        return 3
+
     try:
+        from . import read
+
         with _database_session() as db:
             job = JobService(db, settings).create_job_from_path(apk_path, ghidra_enabled=ghidra_enabled)
     except Exception as exc:
@@ -90,13 +113,21 @@ def run_analysis(
     except KeyboardInterrupt:
         job_cancellation_registry.cancel(job.id)
         output.print("Cancellation requested; waiting for the worker to record the final state.")
-        while True:
-            with _database_session() as db:
-                details = read.job_details(db, job.id)
-            status = getattr(details["job"].status, "value", details["job"].status)
-            if status in TERMINAL_STATUSES:
-                break
-            time.sleep(max(0.1, poll_interval))
+        deadline = time.monotonic() + 60
+        try:
+            while time.monotonic() < deadline:
+                with _database_session() as db:
+                    details = read.job_details(db, job.id)
+                status = getattr(details["job"].status, "value", details["job"].status)
+                if status in TERMINAL_STATUSES:
+                    break
+                time.sleep(max(0.1, poll_interval))
+            else:
+                output.print("The job state may still read 'running' in the database; exiting without changing it.")
+                return 130
+        except KeyboardInterrupt:
+            output.print("The job state may still read 'running' in the database; exiting without changing it.")
+            return 130
     except Exception as exc:
         output.print(f"Analysis monitoring failed: {exc}")
         return 1

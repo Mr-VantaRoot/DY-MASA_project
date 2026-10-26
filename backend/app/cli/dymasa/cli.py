@@ -12,6 +12,21 @@ from .ui import TerminalUI
 
 
 Output = TerminalUI
+EXIT_OK = 0
+EXIT_FAILURE = 1
+EXIT_USAGE = 2
+EXIT_NOT_READY = 3
+EXIT_CANCELLED = 130
+
+
+class DatabaseNotReadyError(ValueError):
+    """The selected database is reachable but has no analysis schema."""
+
+
+class InvalidInputError(ValueError):
+    """CLI input is invalid before analysis or database work begins."""
+
+
 class InteractiveQuit(Exception):
     """Signal a clean quit from any nested interactive screen."""
 
@@ -20,6 +35,7 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="dy-masa",
         description="DY-MASA local Android APK security analysis CLI.",
+        epilog="Exit codes: 0 success; 1 analysis/runtime failure; 2 invalid input or usage; 3 dependency or database not ready; 130 cancelled.",
     )
     parser.add_argument("--quiet", action="store_true", help="Suppress the interactive banner.")
     parser.add_argument("--no-color", action="store_true", help="Disable terminal styling.")
@@ -27,6 +43,7 @@ def _parser() -> argparse.ArgumentParser:
     subparsers.add_parser("overview", help="Show real job and result totals.")
     subparsers.add_parser("history", help="Browse all persisted analysis scans.")
     subparsers.add_parser("check", help="Check configuration and available dependencies.")
+    subparsers.add_parser("init", help="Create the existing analysis schema without deleting data.")
     analyze = subparsers.add_parser("analyze", help="Analyze one authorized APK and monitor its job.")
     analyze.add_argument("apk_path", type=Path)
     analyze.add_argument("--poll-interval", type=float, default=1.0)
@@ -135,15 +152,60 @@ def check(output: Output) -> int:
     return 0
 
 
+def _require_analysis_tables() -> None:
+    from .database import analysis_tables_exist
+    from app.core.config import get_settings
+
+    try:
+        ready = analysis_tables_exist()
+    except Exception as exc:
+        raise DatabaseNotReadyError(f"Database is not ready ({exc}). Run `dy-masa init`, or start the web backend once.") from exc
+    if not ready:
+        raise DatabaseNotReadyError(
+            f"Database is not initialized (no analysis tables found at {_safe_database_url(get_settings().database_url)}). "
+            "Run `dy-masa init`, or start the web backend once."
+        )
+
+
+def _validate_apk_input(path: Path) -> str | None:
+    if not path.exists():
+        return f"APK does not exist: {path}"
+    if not path.is_file():
+        return f"APK path is not a file: {path}"
+    if path.suffix.lower() != ".apk":
+        return f"Input must have a .apk extension: {path}"
+    if not os.access(path, os.R_OK):
+        return f"APK is not readable: {path}"
+    return None
+
+
+def init_database(output: Output) -> int:
+    from sqlalchemy import inspect
+
+    from app.core.config import get_settings
+    from app.db.session import engine, init_db
+
+    settings = get_settings()
+    before = set(inspect(engine).get_table_names())
+    init_db()
+    after = set(inspect(engine).get_table_names())
+    state = "created" if "analysis_jobs" not in before and "analysis_jobs" in after else "already existed"
+    output.print(f"Database: {_safe_database_url(settings.database_url)}")
+    output.print(f"Analysis schema: {state}; existing data was preserved.")
+    return EXIT_OK
+
+
 def _with_session(callback):
     """Run one read-only operation in a short-lived session."""
 
-    from app.db.session import SessionLocal, ensure_local_schema_updates
+    from app.db.session import SessionLocal
 
     try:
-        ensure_local_schema_updates()
+        _require_analysis_tables()
         with SessionLocal() as db:
             return callback(db)
+    except DatabaseNotReadyError:
+        raise
     except LookupError as exc:
         raise ValueError(str(exc)) from exc
     except Exception as exc:
@@ -811,7 +873,17 @@ def main(argv: list[str] | None = None) -> int:
     output = Output(quiet=args.quiet, no_color=args.no_color)
     if args.command == "check":
         return check(output)
+    if args.command == "init":
+        try:
+            return init_database(output)
+        except Exception as exc:
+            output.print(f"Database initialization failed: {exc}")
+            return EXIT_NOT_READY
     if args.command == "analyze":
+        invalid = _validate_apk_input(args.apk_path)
+        if invalid:
+            output.print(f"Invalid input: {invalid}")
+            return EXIT_USAGE
         from .runner import run_analysis
         from app.core.config import get_settings
 
@@ -819,17 +891,26 @@ def main(argv: list[str] | None = None) -> int:
     if args.command in {"overview", "history", "jobs", "job", "findings", "evidence", "reports", "reasoning"}:
         try:
             return _read_command(args, output)
+        except DatabaseNotReadyError as exc:
+            output.print(str(exc))
+            return EXIT_NOT_READY
+        except InvalidInputError as exc:
+            output.print(f"Invalid input: {exc}")
+            return EXIT_USAGE
         except ValueError as exc:
             output.print(f"Error: {exc}")
-            return 1
+            return EXIT_FAILURE
     if args.command == "dynamic":
         return _dynamic_command(args, output)
     if args.command == "health":
         try:
             return _health_command(output)
+        except DatabaseNotReadyError as exc:
+            output.print(str(exc))
+            return EXIT_NOT_READY
         except Exception as exc:
             output.print(f"Health check failed: {exc}")
-            return 1
+            return EXIT_NOT_READY
     if args.command == "config":
         return _config_command(output)
     return interactive(output)

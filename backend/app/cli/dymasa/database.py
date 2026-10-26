@@ -59,3 +59,19 @@ def configure_database_environment(root: Path | None = None) -> str:
     fallback = sqlite_url(root)
     os.environ["MOBILE_PENTEST_DATABASE_URL"] = fallback
     return fallback
+
+
+def analysis_tables_exist() -> bool:
+    """Check for the primary analysis table without creating or altering tables."""
+    from app.core.config import get_settings
+
+    database_url = get_settings().database_url
+    if database_url.startswith("sqlite:///"):
+        database_path = Path(database_url.removeprefix("sqlite:///"))
+        if not database_path.exists():
+            return False
+    from sqlalchemy import inspect
+
+    from app.db.session import engine
+
+    return "analysis_jobs" in inspect(engine).get_table_names()
