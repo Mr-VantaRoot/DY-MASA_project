@@ -128,7 +128,7 @@ class TerminalUI:
                 columns = Table.grid(expand=False, padding=(0, 2))
                 columns.add_column()
                 columns.add_column()
-                columns.add_row(column(options[:6]), column(options[6:]))
+                columns.add_row(column(options[:7]), column(options[7:]))
                 self.print(columns)
                 return
             table = Table(
@@ -149,8 +149,8 @@ class TerminalUI:
             return
         self.print("\nCOMMANDS  //  ? for help")
         if len(options) >= 8:
-            left = options[:6]
-            right = options[6:]
+            left = options[:7]
+            right = options[7:]
             for index in range(max(len(left), len(right))):
                 left_text = ""
                 right_text = ""
