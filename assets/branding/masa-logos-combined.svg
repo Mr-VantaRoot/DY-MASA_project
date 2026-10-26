@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1774" height="887" viewBox="0 0 1774 887">
+  <rect width="1774" height="887" fill="#0d1117"/>
+  <rect x="233" y="127" width="606" height="611" fill="#000000"/>
+  <rect x="893" y="127" width="602" height="611" fill="#000000"/>
+  <image href="masa-logo.png" x="233" y="127" width="606" height="611" preserveAspectRatio="xMidYMid meet"/>
+  <image href="../MASA-CLI.png" x="893" y="127" width="602" height="611" preserveAspectRatio="xMidYMid meet"/>
+</svg>
