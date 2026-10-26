@@ -65,6 +65,18 @@ def parse_line(raw: str) -> ParsedLine:
             level = remaining[level_index]
             before_level = remaining[:level_index]
             after_level = remaining[level_index + 1:]
+            all_before_level = fields[: level_index + 2]
+            numeric_before_level = [field for field in all_before_level if field.isdigit()]
+            # A uid-first numeric layout (uid pid tid level) is ambiguous with
+            # pid/tid/uid. Do not confidently classify the uid as the process ID.
+            # The normal uid-after-tid layout has the first two numeric fields
+            # equal, which remains safely supported.
+            if (
+                len(all_before_level) >= 3
+                and all(field.isdigit() for field in all_before_level[:3])
+                and all_before_level[0] != all_before_level[1]
+            ):
+                return ParsedLine(raw=raw, timestamp=timestamp, message=body)
             uid_token = next((field for field in before_level if parse_uid(field) is not None), None)
             if uid_token is None and after_level and parse_uid(after_level[0]) is not None and len(after_level) > 1:
                 uid_token = after_level.pop(0)

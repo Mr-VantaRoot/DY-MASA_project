@@ -27,6 +27,21 @@ class Stage1LogcatTests(unittest.TestCase):
         self.assertEqual(parsed.uid, 10825)
         self.assertEqual(parsed.tag, "Tag 7")
 
+    def test_threadtime_year_without_uid_keeps_pid(self) -> None:
+        parsed = parse_line("2026-10-23 10:42:57.133 31093 31093 I FirebaseApp: init")
+        self.assertEqual(parsed.pid, 31093)
+        self.assertIsNone(parsed.uid)
+
+    def test_uid_first_numeric_layout_is_not_misclassified(self) -> None:
+        parsed = parse_line("2026-10-23 10:42:57.133 10825 31093 31093 I FirebaseApp: init")
+        self.assertIsNone(parsed.pid)
+        self.assertIsNone(parsed.uid)
+
+    def test_uid_first_named_layout_is_not_misclassified(self) -> None:
+        parsed = parse_line("2026-10-23 10:42:57.133 u0_a825 31093 31093 I FirebaseApp: init")
+        self.assertIsNone(parsed.pid)
+        self.assertIsNone(parsed.uid)
+
     def test_sanitized_year_uid_fixture_supports_uid_field_variants(self) -> None:
         fixture = Path(__file__).parent / "fixtures" / "logcat-threadtime-uid-year.txt"
         lines = fixture.read_text(encoding="utf-8").splitlines()

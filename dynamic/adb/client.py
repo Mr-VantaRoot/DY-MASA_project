@@ -298,7 +298,7 @@ class AdbClient:
         return self.run(["logcat", "-d", "-v", logcat_format, "-b", "all"], timeout=timeout, device=device)
 
     def dump_logcat(self, device: str, timeout: int = 30) -> AdbResult:
-        for logcat_format in ("threadtime,uid,year", "threadtime", "time"):
+        for logcat_format in ("threadtime,year", "threadtime", "time"):
             result = self.dump_logcat_format(device, logcat_format, timeout)
             if result.ok:
                 return AdbResult(result.command, result.exit_code, result.stdout, result.stderr, logcat_format)
