@@ -37,7 +37,8 @@ class RealLogcatFixtureTests(unittest.TestCase):
             cursor = next(index for index in range(cursor + 1, len(raw_byte_lines)) if raw_byte_lines[index] == encoded)
 
         self.assertEqual(detect_crashes(raw_lines, PACKAGE, pids), [])
-        self.assertFalse(any(" 31023 " in line for line in tier_a + tier_b))
+        self.assertFalse(any("(31023)" in line for line in tier_a + tier_b))
+        self.assertFalse(any("FirebaseCrashlytics" in line for line in tier_a + tier_b))
         self.assertFalse(any("process gone or crashing" in line for line in tier_a + tier_b))
 
 
