@@ -100,7 +100,9 @@ Runtime analysis is separate from the static scan. A report generated after stat
 - Health endpoint that checks the database and executes configured tool checks.
 - PostgreSQL support and a SQLite fallback for local single-user use.
 - Optional terminal route/page, disabled by default and only mounted when enabled.
-- Command-line entry point for running the static pipeline on one APK.
+- **CLI edition:** run scans and inspect saved jobs, findings, evidence, reports, and runtime-validation status directly from the terminal, using the same configured database as the web dashboard.
+
+For terminal users, DY-MASA includes both an interactive menu and subcommands. From the repository root, run `./work/dy-masa` to open the menu or `./work/dy-masa --help` to see available commands. For example, `./work/dy-masa analyze "/path/to/authorized-app.apk"` starts a scan, while `./work/dy-masa findings` lists stored findings. The CLI is an additional way to use DY-MASA—not a separate scanner or database. See [CLI edition and command reference](#cli-edition) in the setup section below.
 
 ---
 
