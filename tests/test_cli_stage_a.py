@@ -1,4 +1,6 @@
 import os
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 import tempfile
 import unittest
@@ -35,7 +37,60 @@ class CliStageATests(unittest.TestCase):
             self.assertEqual(os.environ["MOBILE_PENTEST_DATABASE_URL"], configured)
 
     def test_check_command_starts_without_database_import(self):
-        self.assertEqual(main(["--quiet", "check"]), 0)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            java = root / "java"
+            apktool = root / "apktool.jar"
+            jadx = root / "jadx.jar"
+            storage = root / "storage"
+            java.touch()
+            java.chmod(0o755)
+            apktool.touch()
+            jadx.touch()
+            storage.mkdir()
+            env = {
+                "MOBILE_PENTEST_JAVA_PATH": str(java),
+                "MOBILE_PENTEST_APKTOOL_JAR_PATH": str(apktool),
+                "MOBILE_PENTEST_JADX_JAR_PATH": str(jadx),
+                "MOBILE_PENTEST_STORAGE_ROOT": str(storage),
+                "MOBILE_PENTEST_DATABASE_URL": f"sqlite:///{root / 'masa.sqlite3'}",
+            }
+            from app.core.config import get_settings
+
+            get_settings.cache_clear()
+            try:
+                with patch.dict(os.environ, env, clear=True):
+                    self.assertEqual(main(["--quiet", "check"]), 0)
+            finally:
+                get_settings.cache_clear()
+
+    def test_check_reports_missing_required_apktool(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            java = root / "java"
+            jadx = root / "jadx.jar"
+            storage = root / "storage"
+            java.touch()
+            java.chmod(0o755)
+            jadx.touch()
+            storage.mkdir()
+            env = {
+                "MOBILE_PENTEST_JAVA_PATH": str(java),
+                "MOBILE_PENTEST_APKTOOL_JAR_PATH": str(root / "missing-apktool.jar"),
+                "MOBILE_PENTEST_JADX_JAR_PATH": str(jadx),
+                "MOBILE_PENTEST_STORAGE_ROOT": str(storage),
+                "MOBILE_PENTEST_DATABASE_URL": f"sqlite:///{root / 'masa.sqlite3'}",
+            }
+            from app.core.config import get_settings
+
+            get_settings.cache_clear()
+            try:
+                stream = StringIO()
+                with patch.dict(os.environ, env, clear=True), redirect_stdout(stream):
+                    self.assertEqual(main(["--quiet", "--no-color", "check"]), 3)
+                self.assertIn("MISSING", stream.getvalue())
+            finally:
+                get_settings.cache_clear()
 
     def test_launcher_exists_and_is_shell_executable(self):
         launcher = Path(__file__).parents[1] / "work" / "dy-masa"

@@ -1,0 +1,638 @@
+--------- beginning of main
+10-23 10:42:57.108 I/TsUtils ( 1555): defaultResidentTileList = wifi,dataconnection
+10-23 10:42:57.125 I/Finsky  (30427): [2] anoy - Received: android.intent.action.PACKAGE_CHANGED, [OKQRIQFdviOM59WH7K5y9BNggjmQgDy2Jvk2Gti7drA]
+10-23 10:42:57.133 I/SmartPanel_SmartPanelPresenter( 3933): doCheckAndAddAppOrShortcut pkgName = b3nac.injuredandroid, packageChange = false
+10-23 10:42:57.140 I/resolv  (  602): GetAddrInfoHandler::run: {0 262144 0 983040 10812 0}
+10-23 10:42:57.141 I/resolv  (  602): GetAddrInfoHandler::run: {0 262144 0 983040 10812 0}
+10-23 10:42:57.150 E/msys    (27059): E[N mns:DGWClient]_LogError(235)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+10-23 10:42:57.150 E/msys    (27059): E[N mns:DGWClient]_LogError(235)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+10-23 10:42:57.155 I/resolv  (  602): GetAddrInfoHandler::run: {0 262144 0 983040 10812 0}
+10-23 10:42:57.155 I/Finsky  (30427): [2] AIM: AppInfoCacheUpdater -> invalidating apps: [b3nac.injuredandroid]
+10-23 10:42:57.159 I/LoadedApk(30943): No resource references to update in package com.transsion.theme.icon
+10-23 10:42:57.162 I/Finsky  (30427): [16927] RECEIVER_PACKAGE_MONITOR#logWorkEndAndFinishGoAsync: SUCCESS
+10-23 10:42:57.163 E/msys    (27059): E[N mns:DGWClient]_LogError(235)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+10-23 10:42:57.163 W/SignedPackage(30866): Cannot get ApplicationInfo for package: com.android.contacts
+10-23 10:42:57.166 I/Finsky  (30427): [2] setup::RES: shouldRecoverRestoredPackages: versionCodeSystem 83241310
+10-23 10:42:57.175 I/TPMSDelegator(30943): TPMS SDK version = 1.0.1
+10-23 10:42:57.180 I/SmartPanel_SmartPanelPresenter( 3933): doCheckAndAddAppOrShortcut canAddFlow = true, isTwinApp = false,isShortcut = false, xunhui game= false, freeeform = true
+10-23 10:42:57.193 I/resolv  (  602): GetAddrInfoHandler::run: {0 262144 0 983040 10812 0}
+10-23 10:42:57.204 I/SmartPanel_TouchView( 3933): packageAdd pkgName = b3nac.injuredandroid
+10-23 10:42:57.204 I/SmartPanel_TouchView( 3933): PackageReceiver received uri null false, action = android.intent.action.PACKAGE_CHANGED
+10-23 10:42:57.205 I/SmartPanel_TouchView( 3933): PackageReceiver received pkgName = b3nac.injuredandroid, action = android.intent.action.PACKAGE_CHANGED
+10-23 10:42:57.205 I/SmartPanel_TouchView( 3933): packageChange: b3nac.injuredandroid, name: b3nac.injuredandroid
+10-23 10:42:57.207 I/SmartPanel_SmartPanelBeanHelper( 3933): oobe = ET, DefaultAppShortcutList = [com.whatsapp, com.facebook.katana, com.facebook.orca, com.instagram.android, com.transsion.camera/selfie, net.one97.paytm/scan_and_pay_shortcut, com.transsion.phoenix, com.zaz.translate, com.transsion.kolun.assistant, com.google.android.youtube, com.transsion.calculator, com.afmobi.boomplayer]
+10-23 10:42:57.212 I/SmartPanel_SmartPanelPresenter( 3933): doCheckAndAddAppOrShortcut pkgName = b3nac.injuredandroid, packageChange = true
+10-23 10:42:57.213 I/SmartPanel_SmartPanelPresenter( 3933): doCheckAndAddAppOrShortcut canAddFlow = true, isTwinApp = false,isShortcut = false, xunhui game= false, freeeform = true
+10-23 10:42:57.213 E/msys    (27059): E[N mns:DGWClient]_LogError(235)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+10-23 10:42:57.217 I/SC_TpmsEventManager(30943): app_install: b3nac.injuredandroid
+10-23 10:42:57.217 I/Finsky:background(30605): [2] anoo - Received: android.intent.action.PACKAGE_CHANGED, [OKQRIQFdviOM59WH7K5y9BNggjmQgDy2Jvk2Gti7drA]
+10-23 10:42:57.221 I/SmartPanel_TouchView( 3933): packageAdd pkgName = b3nac.injuredandroid, enabled: 0
+10-23 10:42:57.227 E/ShellApplication(30943): initAthena error : java.lang.NoSuchMethodException: com.transsion.theftalert.model.utils.TAAthena.initAthena [class android.content.Context]
+10-23 10:42:57.227 E/ShellApplication(30943): initAthena error : java.lang.NoSuchMethodException: com.transsion.peekproof.util.PPAthena.initAthena [class android.content.Context]
+10-23 10:42:57.228 E/ShellApplication(30943): initAthena error : java.lang.NoSuchMethodException: com.transsion.securecard.data.SCAthena.initAthena [class android.content.Context]
+10-23 10:42:57.228 E/ShellApplication(30943): initAthena error : java.lang.NoSuchMethodException: com.transsion.privacydashboard.utils.PHAthena.initAthena [class android.content.Context]
+10-23 10:42:57.230 I/adbd    (11968): adbd service requested 'shell,v2,TERM=xterm-256color,raw:monkey -p b3nac.injuredandroid -c android.intent.category.LAUNCHER 1'
+10-23 10:42:57.242 I/SC_TpmsEventManager(30943): permission protect has opened!
+10-23 10:42:57.247 I/TranPhoneSwitcher( 1819): mDefaultsign:3subid :27
+10-23 10:42:57.267 I/Finsky  (30427): [16943] SCH: Scheduling phonesky job Id: 1-1337, CT: 1792688854624, Constraints: [{ L: 41939512, D: 85139512, C: CHARGING_NONE, I: IDLE_NONE, N: NET_ANY, B: BATTERY_ANY }]
+10-23 10:42:57.268 I/Finsky  (30427): [16943] SCH: Scheduling phonesky job Id: 12-1, CT: 1792741017487, Constraints: [{ L: 15000, D: 86400000, C: CHARGING_NONE, I: IDLE_NONE, N: NET_ANY, B: BATTERY_ANY }]
+10-23 10:42:57.268 I/Finsky  (30427): [16943] SCH: Scheduling phonesky job Id: 20-23232323, CT: 1792665131836, Constraints: [{ L: 0, D: 82800000, C: CHARGING_REQUIRED, I: IDLE_NONE, N: NET_UNMETERED, B: BATTERY_ANY }]
+10-23 10:42:57.269 I/Finsky  (30427): [16943] SCH: Scheduling phonesky job Id: 26-1414141414, CT: 1792729588446, Constraints: [{ L: 43200000, D: 44100000, C: CHARGING_NONE, I: IDLE_NONE, N: NET_NONE, B: BATTERY_ANY }]
+10-23 10:42:57.269 I/Finsky  (30427): [16943] SCH: Scheduling phonesky job Id: 28--559038737, CT: 1792723407822, Constraints: [{ L: 18000000, D: 82800000, C: CHARGING_NONE, I: IDLE_NONE, N: NET_ANY, B: BATTERY_ANY }]
+10-23 10:42:57.270 I/Finsky  (30427): [16943] SCH: Scheduling phonesky job Id: 34-1052, CT: 1792665141950, Constraints: [{ L: 1530997, D: 1297530997, C: CHARGING_REQUIRED, I: IDLE_REQUIRED, N: NET_UNMETERED, B: BATTERY_ANY }, { L: 1530997, D: 1297530997, C: CHARGING_NONE, I: IDLE_REQUIRED, N: NET_UNMETERED, B: BATTERY_NOT_LOW }]
+10-23 10:42:57.270 I/Finsky  (30427): [16943] SCH: Scheduling phonesky job Id: 34-1054, CT: 1792665206359, Constraints: [{ L: 79196729, D: 1375196729, C: CHARGING_NONE, I: IDLE_NONE, N: NET_ANY, B: BATTERY_ANY }]
+10-23 10:42:57.270 I/Finsky  (30427): [16943] SCH: Scheduling phonesky job Id: 34-1055, CT: 1792665214178, Constraints: [{ L: 604800000, D: 2591998940, C: CHARGING_NONE, I: IDLE_NONE, N: NET_ANY, B: BATTERY_ANY }]
+10-23 10:42:57.282 I/Finsky:background(30605): [16966] RECEIVER_PACKAGE_MONITOR_BACKGROUND#logWorkEndAndFinishGoAsync: SUCCESS
+10-23 10:42:57.286 I/Finsky  (30427): [17010] registerListener
+10-23 10:42:57.288 I/Finsky  (30427): [17010] DSC: queryDownloads()
+10-23 10:42:57.295 I/Finsky  (30427): [17010] Initialized AssetModuleDownloader.
+10-23 10:42:57.299 I/Finsky:background(30605): [16961] RECEIVER_ENGAGE_PACKAGE_CHANGED#logWorkEndAndFinishGoAsync: SKIPPED_PRECONDITIONS_UNMET
+10-23 10:42:57.306 I/Finsky:background(30605): [16957] DS: queryDownloads()
+10-23 10:42:57.341 I/Fitness (32130): (REDACTED) OnPackageChangedOperation got intent: %s
+10-23 10:42:57.346 I/Fitness (32130): (REDACTED) FitCleanupIntentOperation received Intent %s
+--------- beginning of system
+10-23 10:42:57.359 I/ActivityManager( 1310): Killing 30163:tech.palm.id/u0a164 (adj 975): empty #9
+10-23 10:42:57.401 I/NetworkController.MobileSignalController(27)( 1555): isImsOverWfc = false, mDisableWfc = false, mHideWfcInCsCall = false, isImsOverVoice = false, isLteNetWork = true, mCurrentState.imsRegState=1, isNrNetWork = false, isVoNrEnabledByUser = true, isEnableSettingVo5G = false, showVo5gForVonr = false, showVo4gForVolte = false, mCurrentState.imsRegState=1
+10-23 10:42:57.405 I/libprocessgroup( 1310): Successfully killed process cgroup uid 10164 pid 30163 in 41ms
+10-23 10:42:57.406 W/FeatureFlagsImplExport(30866): java.lang.NoClassDefFoundError: Failed resolution of: Landroid/os/flagging/AconfigPackage;
+10-23 10:42:57.406 W/FeatureFlagsImplExport(30866): java.lang.NoClassDefFoundError: Failed resolution of: Landroid/os/flagging/AconfigPackage;
+10-23 10:42:57.407 W/FeatureFlagsImplExport(30866): java.lang.NoClassDefFoundError: Failed resolution of: Landroid/os/flagging/AconfigPackage;
+10-23 10:42:57.463 I/Finsky  (30427): [2] Detected restoreservicev2://recovery not needed, will not run
+10-23 10:42:57.464 I/aqok    (25058): (REDACTED) Clearing the cache and stopping the fetch for key %s
+10-23 10:42:57.471 W/FeatureFlagsImplExport(30866): java.lang.NoClassDefFoundError: Failed resolution of: Landroid/os/flagging/AconfigPackage;
+10-23 10:42:57.479 I/ewdm    (25058): (REDACTED) AppFlow %s is about to be transmitted
+10-23 10:42:57.518 I/avda    (25058): #getOobeStatus: OptedIn [CONTEXT ratelimit_period="10 SECONDS" ]
+10-23 10:42:57.648 W/FeatureFlagsImplExport(30866): java.lang.NoClassDefFoundError: Failed resolution of: Landroid/os/flagging/AconfigPackage;
+10-23 10:42:57.782 I/NearbyDiscovery(32130): (REDACTED) processGrantSlicePermission: %s
+10-23 10:42:57.886 I/os_lock_noti_receive(30220): onReceive: add pkg = b3nac.injuredandroid to allowed list
+10-23 10:42:57.902 I/libPowerHal(  637): [perfNotifyAppState] pack:tech.palm.id, act:tech.palm.id, state:3, pid:30163, uid:10164, fps:120
+10-23 10:42:57.902 I/libPowerHal(  637): [perfNotifyAppState] pack:tech.palm.id, pid:30163, STATE_DEAD
+10-23 10:42:57.906 E/VerityUtils( 1310): Failed to measure fs-verity, errno 1: /data/app/~~xVcB_lyLPlSZ1lZG3eO9LA==/b3nac.injuredandroid-cTrXdl08gahS7zf6HZWAmw==/base.apk
+10-23 10:42:57.920 I/Zygote  (  603): Process 30163 exited due to signal 9 (Killed)
+10-23 10:42:57.986 W/FeatureFlagsImplExport(30866): java.lang.NoClassDefFoundError: Failed resolution of: Landroid/os/flagging/AconfigPackage;
+10-23 10:42:58.057 I/Finsky:background(30605): [16988] Wrote row to frosting DB: 12116
+10-23 10:42:58.078 W/FeatureFlagsImplExport(30866): java.lang.NoClassDefFoundError: Failed resolution of: Landroid/os/flagging/AconfigPackage;
+10-23 10:42:58.097 I/Finsky:background(30605): [16988] Wrote row to frosting DB: 12117
+10-23 10:42:58.099 I/Finsky  (30427): [17010] Skipped download state update for download 6 on initialize. java.util.concurrent.ExecutionException: com.google.android.finsky.assetmoduleserviceutils.AssetModuleException: Session not found.
+10-23 10:42:58.101 I/Finsky  (30427): [17010] Skipped download state update for download 9 on initialize. java.util.concurrent.ExecutionException: com.google.android.finsky.assetmoduleserviceutils.AssetModuleException: Session not found.
+10-23 10:42:58.119 I/Finsky  (30427): [16940] SCH: Scheduling 0 system job(s)
+10-23 10:42:58.119 I/Finsky:background(30605): [16988] Wrote row to frosting DB: 12118
+10-23 10:42:58.130 I/Finsky:background(30605): [16988] Wrote row to frosting DB: 12119
+10-23 10:42:58.133 W/PackageManager( 1310): Failed registering loading progress callback. Package is fully loaded.
+10-23 10:42:58.134 W/ActivityTaskManager( 1310): update dualprofiel: packageName:b3nac.injuredandroid, user:UserHandle{0}, action:android.intent.action.PACKAGE_ADDED
+10-23 10:42:58.143 I/android.hardware.thermal@2.0-service.mtk(  626): fill_temperatures filterType1 name: SKIN type: SKIN throttlingStatus: NONE value: 34 ret_temps size 0
+10-23 10:42:58.148 W/FeatureFlagsImplExport(30866): java.lang.NoClassDefFoundError: Failed resolution of: Landroid/os/flagging/AconfigPackage;
+10-23 10:42:58.149 I/zygote64(  603): PreZygoteFork(): stray_non_movable_objects_.size() = 11
+10-23 10:42:58.170 I/Finsky  (30427): [17006] [ContentSync] finished, scheduled=false
+10-23 10:42:58.189 W/ActivityManager( 1310): Slow operation: 69ms so far, now at startProcess: returned from zygote!
+10-23 10:42:58.189 W/ActivityManager( 1310): Slow operation: 70ms so far, now at startProcess: done updating battery stats
+10-23 10:42:58.190 W/ActivityManager( 1310): Slow operation: 70ms so far, now at startProcess: building log message
+10-23 10:42:58.190 I/ActivityManager( 1310): Start proc 31023:com.transsion.childmode/1000 for broadcast {com.transsion.childmode/com.transsion.childmode.receiver.ChildModeBroadcastReceiver}
+10-23 10:42:58.190 W/ActivityManager( 1310): Slow operation: 70ms so far, now at startProcess: starting to update pids map
+10-23 10:42:58.190 W/ActivityManager( 1310): Slow operation: 71ms so far, now at startProcess: done updating pids map
+10-23 10:42:58.258 I/ssion.childmod(31023): Using generational CollectorTypeCC GC.
+10-23 10:42:58.295 I/Finsky  (30427): [16929] SCH: Received scheduling request: Id: 37-325, Constraints: [{ L: 0, D: 0, C: CHARGING_NONE, I: IDLE_NONE, N: NET_NONE, B: BATTERY_ANY }]
+10-23 10:42:58.301 W/SignedPackage(30866): Cannot get ApplicationInfo for package: com.android.contacts
+10-23 10:42:58.312 I/keystore2(  442): keystore2::watchdog: Watchdog thread idle -> terminating. Have a great day.
+10-23 10:42:58.374 I/resolv  (  602): GetAddrInfoHandler::run: {0 262144 0 983040 10106 0}
+10-23 10:42:58.419 I/BaseFilesVerify( 1310): Base File verify start
+10-23 10:42:58.421 W/BaseXMLFilesVerify( 1310): isGrammarAndSemanticsLegal file = /data/misc_de/0/apexdata/com.android.permission/roles.xml
+10-23 10:42:58.422 W/BaseXMLFilesVerify( 1310): format is normal
+10-23 10:42:58.423 W/BaseXMLFilesVerify( 1310): verifyRuleGrammarFormat verifyRuleresult :true
+10-23 10:42:58.427 W/BaseXMLFilesVerify( 1310): isGrammarAndSemanticsLegal file = /data/misc_de/0/apexdata/com.android.permission/roles.xmlsecnew.bak
+10-23 10:42:58.429 W/BaseXMLFilesVerify( 1310): format is normal
+10-23 10:42:58.429 W/BaseXMLFilesVerify( 1310): verifyRuleGrammarFormat verifyRuleresult :true
+10-23 10:42:58.608 I/BaseFilesVerify( 1310): Base File verify start
+10-23 10:42:58.609 W/BaseXMLFilesVerify( 1310): isGrammarAndSemanticsLegal file = /data/misc_de/0/apexdata/com.android.permission/runtime-permissions.xml
+10-23 10:42:58.627 I/resolv  (  602): GetAddrInfoHandler::run: {0 262144 0 983040 10812 0}
+10-23 10:42:58.631 I/resolv  (  602): GetAddrInfoHandler::run: {0 262144 0 983040 10812 0}
+10-23 10:42:58.631 E/msys    (27059): E[N mns:DGWClient]_LogError(235)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+10-23 10:42:58.633 E/msys    (27059): E[N mns:DGWClient]_LogError(235)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+10-23 10:42:58.661 W/BaseXMLFilesVerify( 1310): format is normal
+10-23 10:42:58.661 W/BaseXMLFilesVerify( 1310): verifyRuleGrammarFormat verifyRuleresult :true
+10-23 10:42:58.674 W/BaseXMLFilesVerify( 1310): isGrammarAndSemanticsLegal file = /data/misc_de/0/apexdata/com.android.permission/runtime-permissions.xmlsecnew.bak
+10-23 10:42:58.719 I/AndroidRuntime(31000): Using default boot image
+10-23 10:42:58.720 I/AndroidRuntime(31000): Leaving lock profiling enabled
+10-23 10:42:58.720 W/libc    (31000): Access denied finding property "odsign.verification.success"
+10-23 10:42:58.713 W/app_process(31000): type=1400 audit(0.0:57609): avc: denied { read } for name="u:object_r:odsign_prop:s0" dev="tmpfs" ino=9824 scontext=u:r:shell:s0 tcontext=u:object_r:odsign_prop:s0 tclass=file permissive=0
+10-23 10:42:58.726 W/BaseXMLFilesVerify( 1310): format is normal
+10-23 10:42:58.726 W/BaseXMLFilesVerify( 1310): verifyRuleGrammarFormat verifyRuleresult :true
+10-23 10:42:58.736 W/app_process(31000): ART APEX data files are untrusted.
+10-23 10:42:58.736 I/app_process(31000): Core platform API enforcement reporting only by runtime option
+10-23 10:42:58.738 I/app_process(31000): Using generational CollectorTypeCC GC.
+10-23 10:42:58.738 E/app_process(31000): Error reading named image component header for /system/framework/boot.art, error: Image header from "/system/framework/arm64/boot.art" is invalid
+10-23 10:42:58.738 E/app_process(31000): Could not create image space with image file '/system/framework/boot.art!/apex/com.android.art/etc/boot-image.prof:/system/framework/boot-framework.art!/system/etc/boot-image.prof'. Attempting to fall back to imageless running. Error was: Image header from "/system/framework/arm64/boot.art" is invalid
+10-23 10:42:58.746 W/ActivityManager( 1310): Slow operation: 434ms so far, now at attachApplicationLocked: before bindApplication
+10-23 10:42:58.754 W/ActivityManager( 1310): Slow operation: 443ms so far, now at attachApplicationLocked: immediately before bindApplication
+10-23 10:42:58.756 W/ActivityManager( 1310): Slow operation: 445ms so far, now at attachApplicationLocked: immediately after bindApplication
+10-23 10:42:58.757 W/ActivityManager( 1310): Slow operation: 446ms so far, now at attachApplicationLocked: after updateLruProcessLocked
+10-23 10:42:58.759 W/ActivityManager( 1310): Slow operation: 448ms so far, now at attachApplicationLocked: after mServices.attachApplicationLocked
+10-23 10:42:58.769 W/ActivityManager( 1310): Slow operation: 458ms so far, now at attachApplicationLocked: after sendPendingBroadcastsLocked
+10-23 10:42:58.797 I/MWN     ( 1310): onSignalStrengthsChanged...
+10-23 10:42:58.798 I/MWN     ( 1310): network type was unavailable.
+10-23 10:42:58.798 I/MWN     ( 1310): Write 3 to node. type=unknown mSimExist=true mFlightMode=false
+10-23 10:42:58.799 I/MWN     ( 1310): write the value:3 to node successfully.
+10-23 10:42:58.803 I/Fitness (32130): (REDACTED) OnPackageChangedOperation got intent: %s
+10-23 10:42:58.807 I/OtherSimPSListener( 1819): mOthersign:3subid :1
+10-23 10:42:58.923 I/Fitness (32130): (REDACTED) FitCleanupIntentOperation received Intent %s
+10-23 10:42:58.949 I/NetworkController.MobileSignalController(1)( 1555): isImsOverWfc = false, mDisableWfc = false, mHideWfcInCsCall = false, isImsOverVoice = false, isLteNetWork = true, mCurrentState.imsRegState=1, isNrNetWork = false, isVoNrEnabledByUser = false, isEnableSettingVo5G = false, showVo5gForVonr = false, showVo4gForVolte = false, mCurrentState.imsRegState=1
+10-23 10:42:58.979 I/LoadedApk(31023): No resource references to update in package com.transsion.theme.icon
+10-23 10:42:59.029 I/libPerfCtl( 6597): fbcNotifySbeRescue ret=-1
+10-23 10:42:59.105 I/ActivityManager( 1310): Killing 30315:com.google.android.apps.turbo/u0a91 (adj 995): empty #9
+10-23 10:42:59.123 I/Finsky  (30427): [16934] WM::SCH: Logging work initialize for 37-325
+10-23 10:42:59.140 I/Finsky  (30427): [16940] SCH: Scheduling phonesky job Id: 37-325, CT: 1792741378306, Constraints: [{ L: 0, D: 0, C: CHARGING_NONE, I: IDLE_NONE, N: NET_NONE, B: BATTERY_ANY }, { L: 0, D: 0, C: CHARGING_NONE, I: IDLE_NONE, N: NET_NONE, B: BATTERY_ANY }]
+10-23 10:42:59.140 I/android.hardware.thermal@2.0-service.mtk(  626): fill_temperatures filterType1 name: SKIN type: SKIN throttlingStatus: NONE value: 34 ret_temps size 0
+10-23 10:42:59.155 I/Finsky  (30427): [16942] SCH: Scheduling 1 system job(s)
+10-23 10:42:59.160 I/libPerfCtl( 6597): fbcNotifySbeRescue ret=-1
+10-23 10:42:59.167 I/Finsky  (30427): [16942] SCH: Scheduling expedited system job 9372
+10-23 10:42:59.175 I/BufferQueueProducer(  679): [com.transsion.XOSLauncher/com.android.quickstep.src.com.android.launcher3.uioverrides.QuickstepLauncher#0](this:0xb400006f2a867778,id:-1,api:0,p:-1,c:679) queueBuffer: fps=0.07 dur=13854.93 max=13854.93 min=13854.93
+10-23 10:42:59.175 I/FirebaseApp(31023): Device unlocked: initializing all Firebase APIs for app [DEFAULT]
+10-23 10:42:59.178 I/hwcomposer(  621): [HWCDisplay] [Display_0 (type:1)] fps:0.268682,dur:7443.75,max:6913.64,min:530.11  
+10-23 10:42:59.230 I/libprocessgroup( 1310): Successfully killed process cgroup uid 10091 pid 30315 in 122ms
+10-23 10:42:59.247 I/FirebaseCrashlytics(31023): Initializing Crashlytics 17.3.0
+10-23 10:42:59.251 W/ssion.childmod(31023): Unsupported class loader: java.lang.Class<c.d.a.b.d.e>
+10-23 10:42:59.255 W/ssion.childmod(31023): Unsupported class loader: java.lang.Class<c.d.a.b.d.e>
+10-23 10:42:59.255 W/ssion.childmod(31023): Unsupported class loader: java.lang.Class<c.d.a.b.d.e>
+10-23 10:42:59.259 I/mtkpower_client( 1310): perf_lock_acq, hdl:41944, dur:0, num:2, tid:2234
+10-23 10:42:59.260 I/mtkpower_client( 1310): ret_hdl:41945
+10-23 10:42:59.260 I/libPowerHal(  637): cmdSetting - unknown cmd:2004200, scmd:(null) ,param_1:6676
+10-23 10:42:59.261 E/system_server( 1310): Invalid class loader spec: =UnsupportedClassLoaderContext=
+10-23 10:42:59.261 E/PackageDexUsage( 1310): Unsupported context?
+10-23 10:42:59.261 I/mtkpower_client( 1310): perf_lock_rel, hdl:41945, tid:2230
+10-23 10:42:59.317 I/DynamiteModule(31023): Considering local module com.google.android.gms.measurement.dynamite:20 and remote module com.google.android.gms.measurement.dynamite:215
+10-23 10:42:59.317 I/DynamiteModule(31023): Selected remote version of com.google.android.gms.measurement.dynamite, version >= 215
+10-23 10:42:59.334 I/Finsky  (30427): [2] SCH: job service start with id 9372.
+10-23 10:42:59.336 I/FirebaseInitProvider(31023): FirebaseApp initialization successful
+10-23 10:42:59.341 I/Kolun.SkillCard====( 4655): from catch list==15
+10-23 10:42:59.359 I/ChildModeApplication(31023): save default launcher is com.transsion.XOSLauncher/com.android.quickstep.src.com.android.launcher3.uioverrides.QuickstepLauncher
+10-23 10:42:59.364 I/Kolun.SkillCard===( 4655): card displayTimes=1073741823
+10-23 10:42:59.377 I/ChildModeBroadcastReceiver(31023): pkgStatus = 0
+10-23 10:42:59.399 I/Utils_pkg(31023): pkg = com.transsion.faceidsub
+10-23 10:42:59.399 I/Utils_pkg(31023): pkg = com.transsion.batterylab.icon
+10-23 10:42:59.399 I/Utils_pkg(31023): pkg = com.android.settings
+10-23 10:42:59.399 I/Utils_pkg(31023): pkg = com.transsion.phonemaster
+10-23 10:42:59.399 I/Utils_pkg(31023): pkg = com.android.contacts
+10-23 10:42:59.399 I/Utils_pkg(31023): pkg = com.google.android.contacts
+10-23 10:42:59.399 I/Utils_pkg(31023): pkg = com.infinix.xshare
+10-23 10:42:59.399 I/Utils_pkg(31023): pkg = com.android.stk
+10-23 10:42:59.399 I/Utils_pkg(31023): pkg = com.transsion.carlcare
+10-23 10:42:59.399 I/Utils_pkg(31023): pkg = com.infinix.xui_theme
+10-23 10:42:59.399 I/Utils_pkg(31023): pkg = com.rlk.feedback
+10-23 10:42:59.399 I/Utils_pkg(31023): pkg = com.google.android.documentsui
+10-23 10:42:59.399 I/Utils_pkg(31023): pkg = com.transsion.filemanagerx
+10-23 10:42:59.399 I/Utils_pkg(31023): pkg = com.google.android.apps.tachyon
+10-23 10:42:59.399 I/Utils_pkg(31023): pkg = com.skyroam.app
+10-23 10:42:59.400 I/Utils_pkg(31023): pkg = com.transsion.aivoiceassistant
+10-23 10:42:59.400 I/Utils_pkg(31023): pkg = com.talpa.share
+10-23 10:42:59.400 I/Utils_pkg(31023): pkg = com.transsion.arbusiness.infinix
+10-23 10:42:59.400 I/Utils_pkg(31023): pkg = com.transsion.arbusiness.tecno
+10-23 10:42:59.400 I/Utils_pkg(31023): pkg = com.zaz.translate
+10-23 10:42:59.400 I/Utils_pkg(31023): pkg = com.transsion.letswitch
+10-23 10:42:59.413 W/ThreadPoolForeg(30782): type=1400 audit(0.0:57610): avc: denied { write } for name="traced_producer" dev="tmpfs" ino=22893 scontext=u:r:gmscore_app:s0:c512,c768 tcontext=u:object_r:traced_producer_socket:s0 tclass=sock_file permissive=0 app=com.hoffnung
+10-23 10:42:59.413 W/ScionFrontendAp(31023): type=1400 audit(0.0:57611): avc: denied { search } for name="com.google.android.gms" dev="dm-10" ino=4713 scontext=u:r:system_app:s0 tcontext=u:object_r:privapp_data_file:s0:c512,c768 tclass=dir permissive=0
+10-23 10:42:59.420 W/System  (31023): ClassLoader referenced unknown path: 
+10-23 10:42:59.497 I/libPerfCtl( 6597): fbcNotifySbeRescue ret=-1
+10-23 10:42:59.502 W/ssion.childmod(31023): ClassLoaderContext classpath element mismatch. expected=base.apk, found=/system_ext/app/ChildMode/ChildMode.apk (DLC[];PCL[base.apk*4233061809]{PCL[/system/framework/org.apache.http.legacy.jar*927171277]#PCL[/apex/com.android.extservices/javalib/android.ext.adservices.jar*1623750477]#PCL[/system/framework/com.android.location.provider.jar*3091814399]#PCL[/system/framework/com.android.media.remotedisplay.jar*1611360940]#PCL[/apex/com.android.extservices/javalib/android.ext.adservices.jar*1623750477]} | DLC[];PCL[/system_ext/app/ChildMode/ChildMode.apk*1862522761])
+10-23 10:42:59.513 W/AudioALSACaptureDataProviderNormal(  611): readThread, latency_in_s,0.000002,0.035079,0.000073, totalTime 0.035154 > logTimeout 0.022000 TIMEOUT!!
+10-23 10:42:59.703 I/mtkpower_client( 1310): perf_lock_acq, hdl:41945, dur:0, num:2, tid:2220
+10-23 10:42:59.710 I/libPowerHal(  637): cmdSetting - unknown cmd:2004200, scmd:(null) ,param_1:6676
+10-23 10:42:59.711 I/mtkpower_client( 1310): ret_hdl:41946
+10-23 10:42:59.712 I/mtkpower_client( 1310): perf_lock_rel, hdl:41946, tid:2237
+10-23 10:42:59.717 E/msys    (27059): E[O MSync]ModularSyncService_rust_impl::service_ffi::handle_network_response(497)=>DB[223] - Encountered a network error (2002: StreamGroupNetworkRequest request cancelled: max retries reached; last err (TransientError domain: MNSTCP code: 0 detail: connect(): Network is unreachable))
+10-23 10:42:59.718 E/msys    (27059): E[O MSync]ModularSyncService_rust_impl::service_ffi::handle_network_error_response(659)=>DB[223] - handle network error response
+10-23 10:42:59.734 W/IrisSyncManager(27059): Iris unsubscribed
+10-23 10:42:59.740 I/resolv  (  602): GetAddrInfoHandler::run: {0 786432 0 983040 1000 0}
+10-23 10:42:59.743 E/FirebaseCrashlytics(31023): Settings request failed.
+10-23 10:42:59.839 I/Finsky  (30427): [17006] SCH: Satisfied jobs for 9372 are: 37-325
+10-23 10:42:59.855 I/PhenotypeResourceReader(32130): unable to find any Phenotype resource metadata for com.transsion.childmode
+10-23 10:42:59.862 I/Finsky  (30427): [17012] SCH: Job 37-325 starting
+10-23 10:42:59.863 I/Finsky  (30427): [2] WM::SCH: Logging work start for 37-325
+10-23 10:42:59.873 I/Finsky  (30427): [2] Received an install/uninstall event for package b3nac.injuredandroid
+10-23 10:42:59.881 W/com.transsion.childmode(31023): type=1400 audit(0.0:57612): avc: denied { search } for comm=4D6561737572656D656E7420576F72 name="com.google.android.gms" dev="dm-10" ino=4713 scontext=u:r:system_app:s0 tcontext=u:object_r:privapp_data_file:s0:c512,c768 tclass=dir permissive=0
+10-23 10:42:59.898 I/Finsky  (30427): [2] SCH: jobFinished: 37-325. TimeElapsed: 36ms.
+10-23 10:42:59.900 I/Finsky  (30427): [2] WM::SCH: Logging work end for 37-325
+10-23 10:42:59.951 I/Zygote  (  603): Process 30315 exited due to signal 9 (Killed)
+10-23 10:42:59.953 I/libPowerHal(  637): [perfNotifyAppState] pack:com.google.android.apps.turbo, act:com.google.android.apps.turbo, state:3, pid:30315, uid:10091, fps:120
+10-23 10:42:59.953 I/libPowerHal(  637): [perfNotifyAppState] pack:com.google.android.apps.turbo, pid:30315, STATE_DEAD
+10-23 10:42:59.957 I/Finsky  (30427): [16942] Not an active Cubes user. Ignoring package install/uninstall event.
+10-23 10:42:59.989 W/PhBaseOp(32130): Phenotype API error. Event: # jlyn@91922900, EventCode: COMMIT_CONFIG [CONTEXT service_id=51 ]
+10-23 10:42:59.989 W/PhBaseOp(32130): frhc: 29542: Stale snapshot for com.google.android.gms.measurement#com.transsion.childmode(new configuration available)
+10-23 10:42:59.989 W/PhBaseOp(32130): 	at frjf.d(:com.google.android.gms@264032029@26.40.32 (190400-995630914):325)
+10-23 10:42:59.989 W/PhBaseOp(32130): 	at frjf.b(:com.google.android.gms@264032029@26.40.32 (190400-995630914):42)
+10-23 10:42:59.989 W/PhBaseOp(32130): 	at frje.i(:com.google.android.gms@264032029@26.40.32 (190400-995630914):3)
+10-23 10:42:59.989 W/PhBaseOp(32130): 	at frja.h(:com.google.android.gms@264032029@26.40.32 (190400-995630914):34)
+10-23 10:42:59.989 W/PhBaseOp(32130): 	at frja.f(:com.google.android.gms@264032029@26.40.32 (190400-995630914):16)
+10-23 10:42:59.989 W/PhBaseOp(32130): 	at djqb.fE(:com.google.android.gms@264032029@26.40.32 (190400-995630914):1)
+10-23 10:42:59.989 W/PhBaseOp(32130): 	at djqm.run(:com.google.android.gms@264032029@26.40.32 (190400-995630914):122)
+10-23 10:42:59.989 W/PhBaseOp(32130): 	at hutd.run(:com.google.android.gms@264032029@26.40.32 (190400-995630914):23)
+10-23 10:42:59.989 W/PhBaseOp(32130): 	at bqht.d(:com.google.android.gms@264032029@26.40.32 (190400-995630914):40)
+10-23 10:42:59.989 W/PhBaseOp(32130): 	at bqht.c(:com.google.android.gms@264032029@26.40.32 (190400-995630914):5)
+10-23 10:42:59.989 W/PhBaseOp(32130): 	at bqht.run(:com.google.android.gms@264032029@26.40.32 (190400-995630914):33)
+10-23 10:42:59.989 W/PhBaseOp(32130): 	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1100)
+10-23 10:42:59.989 W/PhBaseOp(32130): 	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:624)
+10-23 10:42:59.989 W/PhBaseOp(32130): 	at bqnu.run(:com.google.android.gms@264032029@26.40.32 (190400-995630914):8)
+10-23 10:42:59.989 W/PhBaseOp(32130): 	at java.lang.Thread.run(Thread.java:1571)
+10-23 10:42:59.990 W/AsyncOperation(32130): operation=CommitToConfigurationOperationCall, opStatusCode=29542 [CONTEXT service_id=51 ]
+10-23 10:42:59.990 W/AsyncOperation(32130): OperationException[Status{statusCode=Stale snapshot for com.google.android.gms.measurement#com.transsion.childmode(new configuration available), resolution=null}]
+10-23 10:42:59.990 W/AsyncOperation(32130): 	at frja.h(:com.google.android.gms@264032029@26.40.32 (190400-995630914):85)
+10-23 10:42:59.990 W/AsyncOperation(32130): 	at frja.f(:com.google.android.gms@264032029@26.40.32 (190400-995630914):16)
+10-23 10:42:59.990 W/AsyncOperation(32130): 	at djqb.fE(:com.google.android.gms@264032029@26.40.32 (190400-995630914):1)
+10-23 10:42:59.990 W/AsyncOperation(32130): 	at djqm.run(:com.google.android.gms@264032029@26.40.32 (190400-995630914):122)
+10-23 10:42:59.990 W/AsyncOperation(32130): 	at hutd.run(:com.google.android.gms@264032029@26.40.32 (190400-995630914):23)
+10-23 10:42:59.990 W/AsyncOperation(32130): 	at bqht.d(:com.google.android.gms@264032029@26.40.32 (190400-995630914):40)
+10-23 10:42:59.990 W/AsyncOperation(32130): 	at bqht.c(:com.google.android.gms@264032029@26.40.32 (190400-995630914):5)
+10-23 10:42:59.990 W/AsyncOperation(32130): 	at bqht.run(:com.google.android.gms@264032029@26.40.32 (190400-995630914):33)
+10-23 10:42:59.990 W/AsyncOperation(32130): 	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1100)
+10-23 10:42:59.990 W/AsyncOperation(32130): 	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:624)
+10-23 10:42:59.990 W/AsyncOperation(32130): 	at bqnu.run(:com.google.android.gms@264032029@26.40.32 (190400-995630914):8)
+10-23 10:42:59.990 W/AsyncOperation(32130): 	at java.lang.Thread.run(Thread.java:1571)
+10-23 10:43:00.001 E/ssion.childmod(31023): No package ID 6b found for ID 0x6b0b0013.
+10-23 10:43:00.002 I/AlarmManager( 1310): going to acquire wakelock now
+10-23 10:43:00.005 I/FA      (31023): App measurement initialized, version: 191008
+10-23 10:43:00.005 I/FA      (31023): To enable debug logging run: adb shell setprop log.tag.FA VERBOSE
+10-23 10:43:00.005 I/FA      (31023): To enable faster debug mode event logging run:
+10-23 10:43:00.005 I/FA      (31023):   adb shell setprop debug.firebase.analytics.app com.transsion.childmode
+10-23 10:43:00.015 I/Hoffnung( 3574): Universal onReceive: Intent { act=android.intent.action.TIME_TICK flg=0x50200010 }
+10-23 10:43:00.053 W/TrKeyguardClockView( 1555): Keyguard is not showing,so we do not update time.
+10-23 10:43:00.065 I/BufferQueueProducer(  679): [StatusBar#0](this:0xb400006f2a7cdb18,id:-1,api:0,p:-1,c:679) queueBuffer: fps=0.24 dur=8332.85 max=7802.45 min=530.40
+10-23 10:43:00.089 I/Finsky  (30427): [16939] SCH: Scheduling phonesky job Id: 26-1414141414, CT: 1792729588446, Constraints: [{ L: 43200000, D: 44100000, C: CHARGING_NONE, I: IDLE_NONE, N: NET_NONE, B: BATTERY_ANY }]
+10-23 10:43:00.090 W/ContextImpl(31023): Calling a method in the system process without a qualified user: android.app.ContextImpl.bindService:2017 android.content.ContextWrapper.bindService:827 m7.hp.g:11 m7.hp.e:100 m7.fz.a:170 
+10-23 10:43:00.112 I/Finsky  (30427): [16942] SCH: Scheduling 1 system job(s)
+10-23 10:43:00.113 I/Finsky  (30427): [16942] SCH: Scheduling system job Id: 9384, L: 31408333, D: 32308333, C: false, I: false, N: 0
+10-23 10:43:00.142 I/android.hardware.thermal@2.0-service.mtk(  626): fill_temperatures filterType1 name: SKIN type: SKIN throttlingStatus: NONE value: 35 ret_temps size 0
+10-23 10:43:00.143 I/mtkpower_client( 1310): perf_lock_acq, hdl:41946, dur:0, num:2, tid:1969
+10-23 10:43:00.144 I/mtkpower_client( 1310): ret_hdl:41947
+10-23 10:43:00.144 I/libPowerHal(  637): cmdSetting - unknown cmd:2004200, scmd:(null) ,param_1:6676
+10-23 10:43:00.144 I/mtkpower_client( 1310): perf_lock_rel, hdl:41947, tid:2230
+10-23 10:43:00.146 I/Finsky  (30427): [17012] SCH: job service finished with id 9372.
+10-23 10:43:00.154 I/ActivityManager( 1310): Killing 29176:com.google.android.apps.wellbeing/u0a94 (adj 955): empty #9
+10-23 10:43:00.163 I/libPerfCtl(  637): xgfGetFPS pid:6597 fps:135
+10-23 10:43:00.163 I/libPowerHal(  637): [updateFPS] pid(6597) : 120 => 144
+10-23 10:43:00.163 I/libPowerHal(  637): [perfNotifyAppState] pack:com.transsion.XOSLauncher, act:com.android.quickstep.src.com.android.launcher3.uioverrides.QuickstepLauncher, state:5, pid:6597, uid:10167, fps:144
+10-23 10:43:00.166 E/UxUtility(  637): notifyAppState error = NULL
+10-23 10:43:00.171 I/TouchUtility(  637): notifyAppState error = NULL
+10-23 10:43:00.176 I/libprocessgroup( 1310): Successfully killed process cgroup uid 10094 pid 29176 in 19ms
+10-23 10:43:00.226 I/Zygote  (  603): Process 29176 exited due to signal 9 (Killed)
+10-23 10:43:00.231 I/libPowerHal(  637): [perfNotifyAppState] pack:com.google.android.apps.wellbeing, act:com.google.android.apps.wellbeing, state:3, pid:29176, uid:10094, fps:144
+10-23 10:43:00.231 I/libPowerHal(  637): [perfNotifyAppState] pack:com.google.android.apps.wellbeing, pid:29176, STATE_DEAD
+10-23 10:43:00.235 I/AdvertisingIdClient(32130): shouldSendLog 109427452
+10-23 10:43:00.235 I/AdvertisingIdClient(32130): GetInfoInternal elapse 109ms
+10-23 10:43:00.354 I/resolv  (  602): GetAddrInfoHandler::run: {0 262144 0 983040 10812 0}
+10-23 10:43:00.357 E/msys    (27059): E[N mns:DGWClient]_LogError(235)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+10-23 10:43:00.364 I/resolv  (  602): GetAddrInfoHandler::run: {0 262144 0 983040 10812 0}
+10-23 10:43:00.366 E/msys    (27059): E[N mns:DGWClient]_LogError(235)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+10-23 10:43:00.600 I/ActivityManager( 1310): Waited long enough for: ServiceRecord{9e98743 u999 com.google.android.gms/.personalsafety.service.PSAService}
+10-23 10:43:00.680 W/app_process(31000): Using default priority map due to SDK version
+10-23 10:43:00.970 I/Finsky  (30427): [16943] Initializing the instant apps module.
+10-23 10:43:01.006 I/AlarmManager( 1310): going to release wakelock now
+10-23 10:43:01.143 I/android.hardware.thermal@2.0-service.mtk(  626): fill_temperatures filterType1 name: SKIN type: SKIN throttlingStatus: NONE value: 35 ret_temps size 0
+10-23 10:43:01.209 W/main    (31000): type=1400 audit(0.0:57613): avc: denied { read } for name="u:object_r:vendor_exported_default_prop:s0" dev="tmpfs" ino=9990 scontext=u:r:shell:s0 tcontext=u:object_r:vendor_exported_default_prop:s0 tclass=file permissive=0
+10-23 10:43:01.216 W/libc    (31000): Access denied finding property "ro.vendor.tran.hardware"
+10-23 10:43:01.209 W/main    (31000): type=1400 audit(0.0:57614): avc: denied { read } for name="u:object_r:vendor_exported_default_prop:s0" dev="tmpfs" ino=9990 scontext=u:r:shell:s0 tcontext=u:object_r:vendor_exported_default_prop:s0 tclass=file permissive=0
+10-23 10:43:01.216 W/libc    (31000): Access denied finding property "ro.vendor.tran.cpu_model"
+10-23 10:43:01.488 I/resolv  (  602): GetAddrInfoHandler::run: {0 262144 0 983040 10812 0}
+10-23 10:43:01.491 E/msys    (27059): E[N mns:DGWClient]_LogError(235)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+10-23 10:43:01.501 I/resolv  (  602): GetAddrInfoHandler::run: {0 262144 0 983040 10812 0}
+10-23 10:43:01.503 E/msys    (27059): E[N mns:DGWClient]_LogError(235)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+10-23 10:43:01.527 W/Finsky  (30427): [16940] PreloadClasses: Unable to load [androidx.compose.ui.platform.ViewCompositionStrategy$DisposeOnViewTreeLifecycleDestroyed$installFor$1, androidx.compose.ui.platform.AndroidUiDispatcher$Companion$Main$2, androidx.compose.ui.platform.AndroidCompositionLocals_androidKt$LocalConfiguration$1, androidx.compose.ui.platform.AndroidCompositionLocals_androidKt$LocalContext$1, androidx.compose.ui.platform.AndroidCompositionLocals_androidKt$LocalView$1, androidx.compose.ui.platform.DisposableSaveableStateRegistry_androidKt$DisposableSaveableStateRegistry$saveableStateRegistry$1, androidx.compose.ui.platform.DisposableSaveableStateRegistry_androidKt$DisposableSaveableStateRegistry$1, androidx.compose.ui.platform.InspectableValueKt$NoInspectorInfo$1, androidx.compose.ui.node.ComposeUiNode$Companion$SetModifier$1, androidx.compose.ui.node.ComposeUiNode$Companion$SetLayoutDirection$1, androidx.compose.ui.semantics.SemanticsProperties$ContentDescription$1, androidx.compose.ui.semantics.SemanticsPropertyKey$1, androidx.compose.ui.semantics.SemanticsProperties$PaneTitle$1, androidx.compose.ui.semantics.SemanticsProperties$InvisibleToUser$1, androidx.compose.ui.semantics.SemanticsProperties$IsPopup$1, androidx.compose.ui.semantics.SemanticsProperties$IsDialog$1, androidx.compose.ui.semantics.SemanticsProperties$Role$1, androidx.compose.ui.semantics.SemanticsProperties$TestTag$1, androidx.compose.ui.semantics.SemanticsProperties$Text$1, androidx.compose.ui.platform.ComposeView$Content$1, androidx.compose.ui.platform.CompositionLocalsKt$ProvideCommonCompositionLocals$1, androidx.compose.ui.layout.RootMeasurePolicy$measure$2, androidx.compose.ui.input.pointer.PointerInteropFilter_androidKt$pointerInteropFilter$2, androidx.compose.ui.graphics.painter.Painter$drawLambda$1, androidx.compose.ui.graphics.SimpleGraphicsLayerModifier$layerBlock$1, androidx.compose.ui.input.nestedscroll.NestedScrollDispatcher$calculateNestedScrollScope$1, androidx.compose.animation.TransitionData, androidx.compose.animation.Fade, androidx.compose.ui.layout.SubcomposeLayoutState$setRoot$1, androidx.compose.ui.layout.SubcomposeLayoutState$setMeasurePolicy$1, androidx.compose.ui.graphics.BlockGraphicsLayerModifier$measure$1, androidx.compose.ui.text.platform.AndroidParagraphIntrinsics, androidx.compose.ui.graphics.SimpleGraphicsLayerModifier$measure$1, androidx.compose.ui.layout.SubcomposeLayoutKt$SubcomposeLayout$2, androidx.compose.ui.platform.ViewCompositionStrategy$DisposeOnDetachedFromWindowOrReleasedFromPool$installFor$1, androidx.navigation.NavControllerViewModel, androidx.navigation.NavControllerViewModel$Companion]
+10-23 10:43:01.550 W/Monkey  (31000): args: [-p, b3nac.injuredandroid, -c, android.intent.category.LAUNCHER, 1]
+10-23 10:43:01.555 W/Monkey  (31000):  arg: "-p"
+10-23 10:43:01.556 W/Monkey  (31000):  arg: "b3nac.injuredandroid"
+10-23 10:43:01.556 W/Monkey  (31000):  arg: "-c"
+10-23 10:43:01.556 W/Monkey  (31000):  arg: "android.intent.category.LAUNCHER"
+10-23 10:43:01.557 W/Monkey  (31000):  arg: "1"
+10-23 10:43:01.557 W/Monkey  (31000): data="b3nac.injuredandroid"
+10-23 10:43:01.558 W/Monkey  (31000): data="android.intent.category.LAUNCHER"
+10-23 10:43:01.892 W/System  (31000): ClassLoader referenced unknown path: /system/framework/mediatek-cta.jar
+10-23 10:43:01.893 W/CtaManagerFactory(31000): CtaManagerFactoryImpl not found
+10-23 10:43:01.970 W/ssion.childmod(31023): Unknown chunk type '02'.
+10-23 10:43:02.017 I/resolv  (  602): GetAddrInfoHandler::run: {0 262144 0 983040 10812 0}
+10-23 10:43:02.020 W/BroadcastQueue( 1310): Skipping deliver [background] BroadcastRecord{313b2a8 u-1 android.net.conn.CONNECTIVITY_CHANGE} to ReceiverList{5c271c1 31000 (unknown name)/2000/u-1 remote:dbfd19a}: process gone or crashing
+10-23 10:43:02.024 E/msys    (27059): E[N mns:DGWClient]_LogError(235)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+10-23 10:43:02.028 I/resolv  (  602): GetAddrInfoHandler::run: {0 262144 0 983040 10812 0}
+10-23 10:43:02.030 E/msys    (27059): E[N mns:DGWClient]_LogError(235)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+10-23 10:43:02.113 I/mtkpower_client( 1310): perf_cus_lock_hint hint:54, dur:150
+10-23 10:43:02.115 E/libPowerHal(  637): [getHintRscSize] hint_id 54 cannot be found in PowerScnTbl
+10-23 10:43:02.115 I/mtkpower_client( 1310): perf_cus_lock_hint, ret_hdl:0
+10-23 10:43:02.120 I/ActivityTaskManager( 1310): START u0 {act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10200000 cmp=b3nac.injuredandroid/.MainActivity} from uid 2000
+10-23 10:43:02.132 I/ActivityTaskManager( 1310): TaskLaunchParamsModifier: pkgName = null
+10-23 10:43:02.141 I/ActivityTaskManager( 1310): TaskLaunchParamsModifier: pkgName = null
+10-23 10:43:02.142 I/android.hardware.thermal@2.0-service.mtk(  626): fill_temperatures filterType1 name: SKIN type: SKIN throttlingStatus: NONE value: 35 ret_temps size 0
+10-23 10:43:02.147 W/ActivityTaskManager( 1310): Can't find TaskDisplayArea to determine support for multi window. Task id=5808 attached=false
+10-23 10:43:02.151 I/ActivityTaskManager( 1310): TaskLaunchParamsModifier: pkgName = null
+10-23 10:43:02.160 I/hwcomposer(  621): [HWCDisplay] [Display_0 (type:1)] fps:1.676362,dur:2982.65,max:2093.69,min:15.49  
+10-23 10:43:02.163 I/mtkpower@impl(  637): [setMode] type:5, enabled:1
+10-23 10:43:02.165 I/libPowerHal(  637): LAUNCH: cpu_ctrl set cpu freq: 2001000 -1
+10-23 10:43:02.177 I/PowerHalWrapper( 1310): <amsBoostResume> last:com.transsion.XOSLauncher, next:b3nac.injuredandroid 
+10-23 10:43:02.187 I/SmartPanel_SmartPanelService( 3933): activityCheck pkgName: b3nac.injuredandroid, className: b3nac.injuredandroid.MainActivity isResume=false isInshow =false isDrawn = false
+10-23 10:43:02.187 I/Monkey  (31000): Events injected: 1
+10-23 10:43:02.195 I/os.permission( 1310): Grant permission: android.permission.MANAGE_ACTIVITY_TASKS to uid: 10167
+10-23 10:43:02.199 I/FloatWindow( 1310): hookDefaultDisplayRotation witch rotation=0
+10-23 10:43:02.207 I/SurfaceFlinger(  679): [SF client] NEW(0xb400006e3a683470) for (1555:com.android.systemui)
+10-23 10:43:02.216 I/PowerHalWrapper( 1310): amsBoostNotify pid:6597,activity:com.android.quickstep.src.com.android.launcher3.uioverrides.QuickstepLauncher, package:com.transsion.XOSLauncher, mProcessCreatePackcom.google.android.packageinstaller 
+10-23 10:43:02.216 I/PowerHalWrapper( 1310): state: 0 
+10-23 10:43:02.217 I/PowerHalWrapper( 1310): amsBoostNotify AMS_BOOST_PROCESS_CREATE_BOOST:false 
+10-23 10:43:02.222 I/libPowerHal(  637): [perfNotifyAppState] pack:com.transsion.XOSLauncher, act:com.android.quickstep.src.com.android.launcher3.uioverrides.QuickstepLauncher, state:0, pid:6597, uid:10167, fps:144
+10-23 10:43:02.235 I/FloatWindow( 1310): hookDefaultDisplayRotation witch rotation=0
+10-23 10:43:02.237 I/mtkpower_client( 1310): perf_cus_lock_hint hint:50, dur:1000
+10-23 10:43:02.239 I/mtkpower_client( 1310): perf_cus_lock_hint, ret_hdl:0
+10-23 10:43:02.242 I/PowerHalWrapper( 1310): amsBoostProcessCreate package:b3nac.injuredandroid 
+10-23 10:43:02.257 I/android.hardware.usb@1.2-service-mediatekv2(  628): uevent_event change@/devices/platform/1000d000.pwrap/1000d000.pwrap:main_pmic/mt6357-gauge/power_supply/battery
+10-23 10:43:02.263 I/FloatWindow( 1310): hookDefaultDisplayRotation witch rotation=0
+10-23 10:43:02.267 I/android.hardware.usb@1.2-service-mediatekv2(  628): uevent_event change@/devices/platform/1000d000.pwrap/1000d000.pwrap:main_pmic/mt6357-gauge/power_supply/battery
+10-23 10:43:02.276 I/android.hardware.usb@1.2-service-mediatekv2(  628): uevent_event change@/devices/platform/1000d000.pwrap/1000d000.pwrap:main_pmic/mt6357-gauge/power_supply/battery
+10-23 10:43:02.276 I/android.hardware.usb@1.2-service-mediatekv2(  628): uevent_event change@/devices/platform/1000d000.pwrap/1000d000.pwrap:main_pmic/mt6357-gauge/power_supply/battery
+10-23 10:43:02.276 I/android.hardware.usb@1.2-service-mediatekv2(  628): uevent_event change@/devices/platform/1000d000.pwrap/1000d000.pwrap:main_pmic/mt6357-gauge/power_supply/battery
+10-23 10:43:02.276 I/android.hardware.usb@1.2-service-mediatekv2(  628): uevent_event change@/devices/platform/1000d000.pwrap/1000d000.pwrap:main_pmic/mt6357-gauge/power_supply/battery
+10-23 10:43:02.277 I/android.hardware.usb@1.2-service-mediatekv2(  628): uevent_event change@/devices/platform/1000d000.pwrap/1000d000.pwrap:main_pmic/mt6357-gauge/power_supply/battery
+10-23 10:43:02.277 I/android.hardware.usb@1.2-service-mediatekv2(  628): uevent_event change@/devices/platform/1000d000.pwrap/1000d000.pwrap:main_pmic/mt6357-gauge/power_supply/battery
+10-23 10:43:02.277 I/android.hardware.usb@1.2-service-mediatekv2(  628): uevent_event change@/devices/platform/1000d000.pwrap/1000d000.pwrap:main_pmic/mt6357-gauge/power_supply/battery
+10-23 10:43:02.277 I/android.hardware.usb@1.2-service-mediatekv2(  628): uevent_event change@/devices/platform/1000d000.pwrap/1000d000.pwrap:main_pmic/mt6357-gauge/power_supply/battery
+10-23 10:43:02.277 I/android.hardware.usb@1.2-service-mediatekv2(  628): uevent_event change@/devices/platform/1000d000.pwrap/1000d000.pwrap:main_pmic/mt6357-gauge/power_supply/battery
+10-23 10:43:02.277 I/android.hardware.usb@1.2-service-mediatekv2(  628): uevent_event change@/devices/platform/1000d000.pwrap/1000d000.pwrap:main_pmic/mt6357-gauge/power_supply/battery
+10-23 10:43:02.277 I/android.hardware.usb@1.2-service-mediatekv2(  628): uevent_event change@/devices/platform/1000d000.pwrap/1000d000.pwrap:main_pmic/mt6357-gauge/power_supply/battery
+10-23 10:43:02.277 I/android.hardware.usb@1.2-service-mediatekv2(  628): uevent_event change@/devices/platform/1000d000.pwrap/1000d000.pwrap:main_pmic/mt6357-gauge/power_supply/battery
+10-23 10:43:02.277 I/android.hardware.usb@1.2-service-mediatekv2(  628): uevent_event change@/devices/platform/1000d000.pwrap/1000d000.pwrap:main_pmic/mt6357-gauge/power_supply/battery
+10-23 10:43:02.277 I/android.hardware.usb@1.2-service-mediatekv2(  628): uevent_event change@/devices/platform/1000d000.pwrap/1000d000.pwrap:main_pmic/mt6357-gauge/power_supply/battery
+10-23 10:43:02.277 I/android.hardware.usb@1.2-service-mediatekv2(  628): uevent_event change@/devices/platform/1000d000.pwrap/1000d000.pwrap:main_pmic/mt6357-gauge/power_supply/battery
+10-23 10:43:02.278 I/android.hardware.usb@1.2-service-mediatekv2(  628): uevent_event change@/devices/platform/1000d000.pwrap/1000d000.pwrap:main_pmic/mt6357-gauge/power_supply/battery
+10-23 10:43:02.278 I/android.hardware.usb@1.2-service-mediatekv2(  628): uevent_event change@/devices/platform/1000d000.pwrap/1000d000.pwrap:main_pmic/mt6357-gauge/power_supply/battery
+10-23 10:43:02.278 I/android.hardware.usb@1.2-service-mediatekv2(  628): uevent_event change@/devices/platform/1000d000.pwrap/1000d000.pwrap:main_pmic/mt6357-gauge/power_supply/battery
+10-23 10:43:02.278 I/android.hardware.usb@1.2-service-mediatekv2(  628): uevent_event change@/devices/platform/1000d000.pwrap/1000d000.pwrap:main_pmic/mt6357-gauge/power_supply/battery
+10-23 10:43:02.279 I/FloatWindow( 1310): hookDefaultDisplayRotation witch rotation=0
+10-23 10:43:02.284 E/BufferQueueDebug(  679): [Splash Screen b3nac.injuredandroid#0](this:0xb400006f2a81d6d8,id:-1,api:0,p:-1,c:-1) id info cannot be read from 'Splash Screen b3nac.injuredandroid#0'
+10-23 10:43:02.284 I/BufferQueueDebug(  679): [Splash Screen b3nac.injuredandroid#0](this:0xb400006f2a81d6d8,id:-1,api:0,p:-1,c:-1) BufferQueue core=(679:/system/bin/surfaceflinger)
+10-23 10:43:02.290 W/WindowManager( 1310): Changing focus from Window{38798eb u0 com.transsion.XOSLauncher/com.android.quickstep.src.com.android.launcher3.uioverrides.QuickstepLauncher} to null displayId=0 Callers=com.android.server.wm.RootWindowContainer.updateFocusedWindowLocked:494 com.android.server.wm.WindowManagerService.updateFocusedWindowLocked:6103 com.android.server.wm.WindowManagerService.relayoutWindow:2678 com.android.server.wm.Session.relayout:235 
+10-23 10:43:02.293 I/BufferQueueConsumer( 1555): [](id:6130000022e,api:0,p:-1,c:1555) connect: controlledByApp=false
+10-23 10:43:02.293 I/BLASTBufferQueue( 1555): [ViewRootImpl[injuredandroid]#558] constructor()
+10-23 10:43:02.296 I/BufferQueueProducer( 1555): [ViewRootImpl[injuredandroid]#558(BLAST Consumer)558](id:6130000022e,api:1,p:1555,c:1555) connect: api=1 producerControlledByApp=true
+10-23 10:43:02.315 I/zygote64(  603): PreZygoteFork(): stray_non_movable_objects_.size() = 11
+10-23 10:43:02.324 I/Hoffnung( 3574): Universal onReceive: Intent { act=android.intent.action.BATTERY_CHANGED flg=0x60000010 (has extras) }
+10-23 10:43:02.326 I/os.permission( 1310): Grant permission: android.permission.INTERACT_ACROSS_USERS to uid: 10167
+10-23 10:43:02.327 I/Hoffnung( 3574): LocalBroadcastManager onReceive Intent { act=android.intent.action.BATTERY_CHANGED flg=0x60000010 (has extras) }
+10-23 10:43:02.337 I/Monkey  (31000): ## Network stats: elapsed time=176ms (0ms mobile, 0ms wifi, 176ms not connected)
+10-23 10:43:02.341 I/app_process(31000): System.exit called, status: 0
+10-23 10:43:02.341 I/AndroidRuntime(31000): VM exiting with result code 0.
+10-23 10:43:02.357 I/DreamAnimation( 1310):  hookAppTransitSuccess called, and doUnlockAnimation=0  mState=7
+10-23 10:43:02.373 I/WindowManager( 1310):   isAnimating=false  okToAnimate=true  win=Window{e502ec0 u0 Splash Screen b3nac.injuredandroid}
+10-23 10:43:02.373 I/TranPhoneSwitcher( 1819): mDefaultsign:3subid :27
+10-23 10:43:02.383 I/BufferQueueProducer(  679): [StatusBar#0](this:0xb400006f2a7cdb18,id:-1,api:0,p:-1,c:679) queueBuffer: fps=0.43 dur=2317.78 max=2317.78 min=2317.78
+10-23 10:43:02.401 I/BufferQueueProducer( 1555): [ViewRootImpl[injuredandroid]#558(BLAST Consumer)558](id:6130000022e,api:1,p:1555,c:1555) disconnect: api 1
+10-23 10:43:02.404 I/mtkpower_client( 1310): perf_lock_acq, hdl:41947, dur:0, num:2, tid:1969
+10-23 10:43:02.405 I/mtkpower_client( 1310): ret_hdl:41951
+10-23 10:43:02.405 I/libPowerHal(  637): cmdSetting - unknown cmd:2004200, scmd:(null) ,param_1:6676
+10-23 10:43:02.406 I/mtkpower_client( 1310): perf_lock_rel, hdl:41951, tid:1969
+10-23 10:43:02.409 E/OpenGLRenderer(27165): EglManager::makeCurrent mED = 0x1, surface = 0x0, mEC = 0x6d7d3ba3b0, error = EGL_SUCCESS
+10-23 10:43:02.414 E/OpenGLRenderer( 6597): EglManager::makeCurrent mED = 0x1, surface = 0x0, mEC = 0x6d7d3c08f0, error = EGL_SUCCESS
+10-23 10:43:02.424 I/libPerfCtl( 6597): fbcNotifySbeRescue ret=-1
+10-23 10:43:02.425 W/ActivityManager( 1310): Slow operation: 183ms so far, now at startProcess: returned from zygote!
+10-23 10:43:02.425 W/ActivityManager( 1310): Slow operation: 184ms so far, now at startProcess: done updating battery stats
+10-23 10:43:02.426 W/ActivityManager( 1310): Slow operation: 184ms so far, now at startProcess: building log message
+10-23 10:43:02.426 I/ActivityManager( 1310): Start proc 31093:b3nac.injuredandroid/u0a825 for pre-top-activity {b3nac.injuredandroid/b3nac.injuredandroid.MainActivity}
+10-23 10:43:02.426 W/ActivityManager( 1310): Slow operation: 185ms so far, now at startProcess: starting to update pids map
+10-23 10:43:02.427 W/ActivityManager( 1310): Slow operation: 185ms so far, now at startProcess: done updating pids map
+10-23 10:43:02.430 I/libc    (31093): SetHeapTaggingLevel: tag level set to 0
+10-23 10:43:02.439 I/SmartPanel_SmartPanelService( 3933): checkAndHandleAPP curosr: count = 0
+10-23 10:43:02.437 W/main    (31093): type=1400 audit(0.0:57615): avc: denied { read } for name="u:object_r:vendor_memfusion_size_prop:s0" dev="tmpfs" ino=9998 scontext=u:r:untrusted_app_29:s0:c57,c259,c512,c768 tcontext=u:object_r:vendor_memfusion_size_prop:s0 tclass=file permissive=0 app=b3nac.injuredandroid
+10-23 10:43:02.437 W/main    (31093): type=1400 audit(0.0:57616): avc: denied { read } for name="u:object_r:vendor_memfusion_state_prop:s0" dev="tmpfs" ino=9999 scontext=u:r:untrusted_app_29:s0:c57,c259,c512,c768 tcontext=u:object_r:vendor_memfusion_state_prop:s0 tclass=file permissive=0 app=b3nac.injuredandroid
+10-23 10:43:02.437 W/main    (31093): type=1400 audit(0.0:57617): avc: denied { read } for name="u:object_r:vendor_memfusion_tranlog_prop:s0" dev="tmpfs" ino=10001 scontext=u:r:untrusted_app_29:s0:c57,c259,c512,c768 tcontext=u:object_r:vendor_memfusion_tranlog_prop:s0 tclass=file permissive=0 app=b3nac.injuredandroid
+10-23 10:43:02.437 W/main    (31093): type=1400 audit(0.0:57618): avc: denied { read } for name="u:object_r:vendor_memfusion_ui_enable_prop:s0" dev="tmpfs" ino=10002 scontext=u:r:untrusted_app_29:s0:c57,c259,c512,c768 tcontext=u:object_r:vendor_memfusion_ui_enable_prop:s0 tclass=file permissive=0 app=b3nac.injuredandroid
+10-23 10:43:02.448 I/BufferQueueProducer( 1555): [ViewRootImpl[injuredandroid]#558(BLAST Consumer)558](id:6130000022e,api:1,p:1555,c:1555) connect: api=1 producerControlledByApp=true
+10-23 10:43:02.454 I/BufferQueueProducer( 6597): [ViewRootImpl[QuickstepLauncher]#140(BLAST Consumer)140](id:19c50000008c,api:1,p:6597,c:6597) disconnect: api 1
+10-23 10:43:02.455 I/BufferQueueProducer(27165): [ViewRootImpl[ZeroScreen]#2(BLAST Consumer)2](id:6a1d00000002,api:1,p:27165,c:27165) disconnect: api 1
+10-23 10:43:02.457 W/main    (31093): type=1400 audit(0.0:57619): avc: denied { read } for name="u:object_r:vendor_uxcompaction_enable_prop:s0" dev="tmpfs" ino=10245 scontext=u:r:untrusted_app_29:s0:c57,c259,c512,c768 tcontext=u:object_r:vendor_uxcompaction_enable_prop:s0 tclass=file permissive=0 app=b3nac.injuredandroid
+10-23 10:43:02.464 I/.injuredandroi(31093): Using generational CollectorTypeCC GC.
+10-23 10:43:02.466 I/BLASTBufferQueue(27165): [ViewRootImpl[ZeroScreen]#2] destructor()
+10-23 10:43:02.466 I/BufferQueueConsumer(27165): [ViewRootImpl[ZeroScreen]#2(BLAST Consumer)2](id:6a1d00000002,api:0,p:-1,c:27165) disconnect
+10-23 10:43:02.472 I/BLASTBufferQueue( 6597): [ViewRootImpl[QuickstepLauncher]#140] destructor()
+10-23 10:43:02.472 I/BufferQueueConsumer( 6597): [ViewRootImpl[QuickstepLauncher]#140(BLAST Consumer)140](id:19c50000008c,api:0,p:-1,c:6597) disconnect
+10-23 10:43:02.492 I/SmartPanel_SmartPanelService( 3933): checkVideoApp curosr: count = 0
+10-23 10:43:02.510 I/sion.smartpane( 3933): Background concurrent copying GC freed 2040KB AllocSpace bytes, 5(1236KB) LOS objects, 49% free, 3693KB/7387KB, paused 4.891ms,93us total 281.663ms
+10-23 10:43:02.513 I/NetworkController.MobileSignalController(27)( 1555): isImsOverWfc = false, mDisableWfc = false, mHideWfcInCsCall = false, isImsOverVoice = false, isLteNetWork = true, mCurrentState.imsRegState=1, isNrNetWork = false, isVoNrEnabledByUser = true, isEnableSettingVo5G = false, showVo5gForVonr = false, showVo4gForVolte = false, mCurrentState.imsRegState=1
+10-23 10:43:02.515 I/BaseFilesVerify( 1310): Base File verify start
+10-23 10:43:02.517 I/BufferQueueProducer(  679): [NavigationBar0#0](this:0xb400006f2a7bf748,id:-1,api:0,p:-1,c:679) queueBuffer: fps=0.06 dur=17795.32 max=17795.32 min=17795.32
+10-23 10:43:02.518 W/BaseXMLFilesVerify( 1310): isGrammarAndSemanticsLegal file = /data/system/users/0/settings_global.xml
+10-23 10:43:02.530 W/BaseXMLFilesVerify( 1310): format is normal
+10-23 10:43:02.530 W/BaseXMLFilesVerify( 1310): verifyRuleGrammarFormat verifyRuleresult :true
+10-23 10:43:02.533 I/FloatWindow( 1310): hookDefaultDisplayRotation witch rotation=0
+10-23 10:43:02.536 I/TranWmsConnectSourceExtImpl( 1310): hookDisplayResumedActivityChanged displayId: 0 packageName: b3nac.injuredandroid
+10-23 10:43:02.537 I/PowerHalWrapper( 1310): amsBoostNotify pid:31093,activity:b3nac.injuredandroid.MainActivity, package:b3nac.injuredandroid, mProcessCreatePackb3nac.injuredandroid 
+10-23 10:43:02.537 I/PowerHalWrapper( 1310): state: 1 
+10-23 10:43:02.538 I/PowerHalWrapper( 1310): amsBoostNotify AMS_BOOST_PROCESS_CREATE_BOOST:true 
+10-23 10:43:02.542 I/SmartPanel_SmartPanelService( 3933): activityCheck pkgName: b3nac.injuredandroid, className: b3nac.injuredandroid.MainActivity isResume=false isInshow =false isDrawn = false
+10-23 10:43:02.542 I/libPowerHal(  637): [perfNotifyAppState] pack:b3nac.injuredandroid, act:b3nac.injuredandroid.MainActivity, state:1, pid:31093, uid:10825, fps:144
+10-23 10:43:02.542 I/libPowerHal(  637): [perfNotifyAppState] foreground:b3nac.injuredandroid, pid:31093, uid:10825
+10-23 10:43:02.544 W/BaseXMLFilesVerify( 1310): isGrammarAndSemanticsLegal file = /data/system/users/0/settings_global.xmlsecnew.bak
+10-23 10:43:02.546 W/BaseXMLFilesVerify( 1310): format is normal
+10-23 10:43:02.546 E/UxUtility(  637): notifyAppState error = NULL
+10-23 10:43:02.546 I/TouchUtility(  637): notifyAppState error = NULL
+10-23 10:43:02.546 W/BaseXMLFilesVerify( 1310): verifyRuleGrammarFormat verifyRuleresult :true
+10-23 10:43:02.551 I/mtkpower@impl(  637): [notifyAppState] pc:1, com.transsion.XOSLauncher => b3nac.injuredandroid
+10-23 10:43:02.549 W/com.transsion.a( 1310): type=1400 audit(0.0:57620): avc: denied { read } for name="u:object_r:vendor_default_prop:s0" dev="tmpfs" ino=9987 scontext=u:r:system_server:s0 tcontext=u:object_r:vendor_default_prop:s0 tclass=file permissive=0
+10-23 10:43:02.554 W/libc    ( 1310): Access denied finding property "ro.vendor.pnpmgr.touch.ctl"
+10-23 10:43:02.560 W/AudioALSACaptureDataProviderNormal(  611): readThread, latency_in_s,0.000002,0.022203,0.000044, totalTime 0.022249 > logTimeout 0.022000 TIMEOUT!!
+10-23 10:43:02.571 I/mtkpower_client( 1310): perf_lock_acq, hdl:41951, dur:0, num:2, tid:2230
+10-23 10:43:02.572 I/libPowerHal(  637): cmdSetting - unknown cmd:2004200, scmd:(null) ,param_1:6676
+10-23 10:43:02.573 I/mtkpower_client( 1310): ret_hdl:41952
+10-23 10:43:02.573 I/mtkpower_client( 1310): perf_lock_rel, hdl:41952, tid:2230
+10-23 10:43:02.579 I/AdvertisingIdClient(32130): shouldSendLog 109427452
+10-23 10:43:02.579 I/AdvertisingIdClient(32130): GetInfoInternal elapse 11ms
+10-23 10:43:02.584 I/BaseFilesVerify( 1310): Base File verify start
+10-23 10:43:02.586 W/BaseXMLFilesVerify( 1310): isGrammarAndSemanticsLegal file = /data/system/users/0/settings_system.xml
+10-23 10:43:02.588 W/BaseXMLFilesVerify( 1310): format is normal
+10-23 10:43:02.588 W/BaseXMLFilesVerify( 1310): verifyRuleGrammarFormat verifyRuleresult :true
+10-23 10:43:02.601 I/LoadedApk(31093): No resource references to update in package com.transsion.theme.icon
+10-23 10:43:02.606 W/BaseXMLFilesVerify( 1310): isGrammarAndSemanticsLegal file = /data/system/users/0/settings_system.xmlsecnew.bak
+10-23 10:43:02.609 W/BaseXMLFilesVerify( 1310): format is normal
+10-23 10:43:02.609 W/BaseXMLFilesVerify( 1310): verifyRuleGrammarFormat verifyRuleresult :true
+10-23 10:43:02.633 W/DynamiteModule(31093): Local module descriptor class for com.google.firebase.auth not found.
+10-23 10:43:02.637 I/FirebaseInitProvider(31093): FirebaseApp initialization successful
+10-23 10:43:02.648 W/DynamiteModule(31093): Local module descriptor class for com.google.firebase.auth not found.
+10-23 10:43:02.655 I/FirebaseAuth(31093): [FirebaseAuth:] Preparing to create service connection to gms implementation
+10-23 10:43:02.670 I/SmartPanel_SmartPanelService( 3933): checkAndHandleAPP curosr: count = 0
+10-23 10:43:02.670 I/SmartPanel_SmartPanelService( 3933): checkVideoApp curosr: count = 0
+10-23 10:43:02.717 I/libMEOW_gift(31093): open /data/performance/gift/arc.ini
+10-23 10:43:02.718 E/QT      (31093): [QT]file does not exist
+10-23 10:43:02.782 I/adbd    (11968): adbd service requested 'shell,v2,TERM=xterm-256color,raw:getprop sys.boot_completed'
+10-23 10:43:02.834 I/SurfaceFactory(31093): [static] sSurfaceFactory = com.transsion.rt.SurfaceFactoryImpl@3e71da2
+10-23 10:43:02.834 I/adbd    (11968): adbd service requested 'shell,v2,TERM=xterm-256color,raw:pidof b3nac.injuredandroid'
+10-23 10:43:02.834 I/SurfaceFlinger(  679): [SF client] NEW(0xb400006e3a67e770) for (31093:b3nac.injuredandroid)
+10-23 10:43:02.835 I/MsyncFactory(31093): [static] sMsyncFactory = com.mediatek.view.impl.MsyncFactoryImpl@1bb2a33
+10-23 10:43:02.855 I/SurfaceFlinger(  679): [SF client] NEW(0xb400006e3a67e850) for (1310:system_server)
+10-23 10:43:02.865 W/system_server( 1310): type=1400 audit(0.0:57621): avc: denied { read } for name="capacity" dev="sysfs" ino=39095 scontext=u:r:system_server:s0 tcontext=u:object_r:sysfs_batteryinfo:s0 tclass=file permissive=0
+10-23 10:43:02.890 I/PowerHalWrapper(31093): PowerHalWrapper.getInstance 
+10-23 10:43:02.936 E/BufferQueueDebug(  679): [b3nac.injuredandroid/b3nac.injuredandroid.MainActivity#0](this:0xb400006f2a7efdd8,id:-1,api:0,p:-1,c:-1) id info cannot be read from 'b3nac.injuredandroid/b3nac.injuredandroid.MainActivity#0'
+10-23 10:43:02.936 I/adbd    (11968): adbd service requested 'shell,v2,TERM=xterm-256color,raw:dumpsys window windows'
+10-23 10:43:02.936 I/BufferQueueDebug(  679): [b3nac.injuredandroid/b3nac.injuredandroid.MainActivity#0](this:0xb400006f2a7efdd8,id:-1,api:0,p:-1,c:-1) BufferQueue core=(679:/system/bin/surfaceflinger)
+10-23 10:43:02.941 W/WindowManager( 1310): Changing focus from null to Window{1185a98 u0 b3nac.injuredandroid/b3nac.injuredandroid.MainActivity} displayId=0 Callers=com.android.server.wm.RootWindowContainer.updateFocusedWindowLocked:494 com.android.server.wm.WindowManagerService.updateFocusedWindowLocked:6103 com.android.server.wm.WindowManagerService.relayoutWindow:2678 com.android.server.wm.Session.relayout:235 
+10-23 10:43:02.945 I/WindowManager( 1310): Relayout Window{1185a98 u0 b3nac.injuredandroid/b3nac.injuredandroid.MainActivity}: oldVis=4 newVis=0 focusMayChange = true requestedWidth = 720 requestedHeight = 1612 outFrames = ClientWindowFrames{frame=[0,0][720,1612] display=[0,0][720,1612] backdrop=[0,0][720,1612]} outSurfaceControl = Surface(name=b3nac.injuredandroid/b3nac.injuredandroid.MainActivity)/@0xc38e262
+10-23 10:43:02.947 I/BufferQueueConsumer(31093): [](id:797500000000,api:0,p:-1,c:31093) connect: controlledByApp=false
+10-23 10:43:02.948 W/ServiceManager(  679): Permission failure: android.permission.ACCESS_SURFACE_FLINGER from uid=10825 pid=31093
+10-23 10:43:02.948 W/ServiceManager(  679): Permission failure: android.permission.ROTATE_SURFACE_FLINGER from uid=10825 pid=31093
+10-23 10:43:02.957 I/BLASTBufferQueue(31093): [ViewRootImpl[MainActivity]#0] constructor()
+10-23 10:43:02.991 I/hwservicemanager(  387): getTransport: Cannot find entry android.hardware.configstore@1.0::ISurfaceFlingerConfigs/default in either framework or device VINTF manifest.
+10-23 10:43:03.003 E/OpenGLRenderer(31093): EglManager::makeCurrent mED = 0x1, surface = 0x0, mEC = 0x6d7d3b4260, error = EGL_SUCCESS
+10-23 10:43:03.015 E/HWComposer(  679): getSupportedContentTypes: getSupportedContentTypes failed for display 0: Unsupported (8)
+10-23 10:43:03.015 I/BufferQueueProducer(31093): [ViewRootImpl[MainActivity]#0(BLAST Consumer)0](id:797500000000,api:1,p:31093,c:31093) connect: api=1 producerControlledByApp=true
+10-23 10:43:03.034 E/ion     (31093): ioctl c0044901 failed with code -1: Invalid argument
+10-23 10:43:03.143 I/android.hardware.thermal@2.0-service.mtk(  626): fill_temperatures filterType1 name: SKIN type: SKIN throttlingStatus: NONE value: 35 ret_temps size 0
+10-23 10:43:03.227 E/OpenGLRenderer(31093): fbcNotifyFrameComplete error: undefined symbol: fbcNotifyFrameComplete
+10-23 10:43:03.227 E/OpenGLRenderer(31093): fbcNotifyNoRender error: undefined symbol: fbcNotifyNoRender
+10-23 10:43:03.250 I/ClientCache(  679): add: Cache owner=0xb400006e2a647b90
+10-23 10:43:03.254 I/hwcomposer(  621): [HWCDisplay] [Display_0 (type:1)] fps:14.634790,dur:1093.29,max:352.75,min:11.97  
+10-23 10:43:03.257 I/BufferQueueProducer( 1555): [ViewRootImpl[injuredandroid]#558(BLAST Consumer)558](id:6130000022e,api:1,p:1555,c:1555) disconnect: api 1
+10-23 10:43:03.268 I/SmartPanel_SmartPanelService( 3933): onWindowsDrawn pkgName: b3nac.injuredandroid, className: b3nac.injuredandroid.MainActivity launchState=1 windowsDrawnDelayMs =1129
+10-23 10:43:03.278 I/WindowManager( 1310):   isAnimating=false  okToAnimate=true  win=Window{e502ec0 u0 Splash Screen b3nac.injuredandroid}
+10-23 10:43:03.281 W/AudioALSACaptureDataProviderNormal(  611): readThread, latency_in_s,0.000002,0.022187,0.001005, totalTime 0.023194 > logTimeout 0.022000 TIMEOUT!!
+10-23 10:43:03.282 I/ActivityTaskManager( 1310): Displayed b3nac.injuredandroid/.MainActivity: +1s129ms
+10-23 10:43:03.292 I/BLASTBufferQueue( 1555): [ViewRootImpl[injuredandroid]#558] destructor()
+10-23 10:43:03.292 I/BufferQueueConsumer( 1555): [ViewRootImpl[injuredandroid]#558(BLAST Consumer)558](id:6130000022e,api:0,p:-1,c:1555) disconnect
+10-23 10:43:03.293 I/mtkpower_client( 1310): perf_cus_lock_hint hint:50, dur:1000
+10-23 10:43:03.293 I/mtkpower_client( 1310): perf_cus_lock_hint, ret_hdl:0
+10-23 10:43:03.304 I/WindowManager( 1310):   onAnimationFinished on win=Window{1185a98 u0 b3nac.injuredandroid/b3nac.injuredandroid.MainActivity}
+10-23 10:43:03.306 W/InputManager-JNI( 1310): Input channel object 'e502ec0 Splash Screen b3nac.injuredandroid (client)' was disposed without first being removed with the input manager!
+10-23 10:43:03.315 I/PowerHalWrapper( 1310): amsBoostNotify pid:6597,activity:com.android.quickstep.src.com.android.launcher3.uioverrides.QuickstepLauncher, package:com.transsion.XOSLauncher, mProcessCreatePackb3nac.injuredandroid 
+10-23 10:43:03.315 I/PowerHalWrapper( 1310): state: 0 
+10-23 10:43:03.315 I/PowerHalWrapper( 1310): amsBoostNotify AMS_BOOST_PROCESS_CREATE_BOOST:true 
+10-23 10:43:03.319 I/libPowerHal(  637): [perfNotifyAppState] pack:com.transsion.XOSLauncher, act:com.android.quickstep.src.com.android.launcher3.uioverrides.QuickstepLauncher, state:0, pid:6597, uid:10167, fps:144
+10-23 10:43:03.327 I/FloatWindow( 1310): hookInputMethodShown inputShown: false
+10-23 10:43:03.327 I/TranWmsConnectSourceExtImpl( 1310): hookInputMethodShown inputShown: false
+10-23 10:43:03.328 I/input_debug( 1310): package: b3nac.injuredandroid isPassWordInput: false inputType: 0 mMethodMap: true isKeyguardShowing: false enable: 0 isSplitScreen: false
+10-23 10:43:03.351 I/libPerfCtl(  637): xgfGetFPS pid:31093 fps:19
+10-23 10:43:03.351 I/libPowerHal(  637): [updateFPS] pid(31093) : 144 => 60
+10-23 10:43:03.352 I/libPowerHal(  637): [perfNotifyAppState] pack:b3nac.injuredandroid, act:b3nac.injuredandroid.MainActivity, state:5, pid:31093, uid:10825, fps:60
+10-23 10:43:03.369 E/UxUtility(  637): notifyAppState error = NULL
+10-23 10:43:03.369 I/TouchUtility(  637): notifyAppState error = NULL
+10-23 10:43:03.375 I/WindowManager( 1310):   onAnimationFinished on win=Window{e502ec0 u0 Splash Screen b3nac.injuredandroid}
+10-23 10:43:03.377 I/mtkpower@impl(  637): [setMode] type:5, enabled:0
+10-23 10:43:03.377 W/ActivityTaskManager( 1310): Request to remove task ignored for non-existent task 5807
+10-23 10:43:03.379 I/BufferQueueDebug(  679): [Splash Screen b3nac.injuredandroid#0](this:0xb400006f2a81d6d8,id:-1,api:0,p:-1,c:679) onDestructor()
+10-23 10:43:03.379 I/BLASTBufferQueue( 1555): releaseBufferCallbackThunk bufferId:6678674151424 framenumber:2 blastBufferQueue is dead
+10-23 10:43:03.379 I/PowerHalWrapper( 1310): amsBoostStop AMS_BOOST_PACK_SWITCH:true, AMS_BOOST_ACT_SWITCH:false, AMS_BOOST_PROCESS_CREATE:true 
+10-23 10:43:03.380 W/AudioALSACaptureDataProviderNormal(  611): readThread, latency_in_s,0.000002,0.019530,0.002911, totalTime 0.022443 > logTimeout 0.022000 TIMEOUT!!
+10-23 10:43:03.395 I/BufferQueueDebug(  679): [com.transsion.XOSLauncher/com.android.quickstep.src.com.android.launcher3.uioverrides.QuickstepLauncher#0](this:0xb400006f2a867778,id:-1,api:0,p:-1,c:679) onDestructor()
+10-23 10:43:03.395 I/BLASTBufferQueue( 6597): releaseBufferCallbackThunk bufferId:28333899253411 framenumber:6 blastBufferQueue is dead
+10-23 10:43:03.395 I/BufferQueueDebug(  679): [ZeroScreen#0](this:0xb400006f2a86a508,id:-1,api:0,p:-1,c:679) onDestructor()
+10-23 10:43:03.396 I/BLASTBufferQueue(27165): releaseBufferCallbackThunk bufferId:116672786595857 framenumber:1 blastBufferQueue is dead
+10-23 10:43:03.405 I/libPowerHal(  637): [PD] LAUNCH update cmd:10000001 param:0
+10-23 10:43:03.406 I/mtkpower@impl(  637): [mtkPowerHint] hint:22, hold:0, ext:30, ext_hold:2000
+10-23 10:43:03.413 I/mtkpower@impl(  637): [mtkPowerHint] hint:21, hold:6000, ext:30, ext_hold:35000
+10-23 10:43:03.422 I/GoogleInputMethodService( 3362): GoogleInputMethodService.onFinishInput():2404 
+10-23 10:43:03.421 W/ThreadPoolForeg(30782): type=1400 audit(0.0:57622): avc: denied { write } for name="traced_producer" dev="tmpfs" ino=22893 scontext=u:r:gmscore_app:s0:c512,c768 tcontext=u:object_r:traced_producer_socket:s0 tclass=sock_file permissive=0 app=com.hoffnung
+10-23 10:43:03.435 I/Module  ( 3362): DeviceLockedStatusModuleProvider$Module.updateDeviceLockedStatusInternal():119 repeatCheckTimes = 0, locked = false
+10-23 10:43:03.437 I/SmartPanel_SmartPanelService( 3933): ASP topPkg: b3nac.injuredandroid  topClass = b3nac.injuredandroid.MainActivity isSplitScreenfalse
+10-23 10:43:03.452 I/GoogleInputMethodService( 3362): GoogleInputMethodService.onStartInput():1552 onStartInput(EditorInfo{EditorInfo{packageName=b3nac.injuredandroid, inputType=0, inputTypeString=NULL, enableLearning=false, autoCorrection=false, autoComplete=false, imeOptions=0, privateImeOptions=null, actionName=UNSPECIFIED, actionLabel=null, initialSelStart=-1, initialSelEnd=-1, initialCapsMode=0, label=null, fieldId=-1, fieldName=null, extras=null, hintText=null, hintLocales=[]}}, false)
+10-23 10:43:03.453 I/LatinInputMethodServiceBase( 3362): LatinInputMethodServiceBase.updateInputViewCoverNavigation():360 Update input view padding, isNavbarOverInputWindow=false, bottom inset=80
+10-23 10:43:03.454 I/Module  ( 3362): DeviceLockedStatusModuleProvider$Module.updateDeviceLockedStatusInternal():119 repeatCheckTimes = 1, locked = false
+10-23 10:43:03.479 I/mtkpower_client( 1310): perf_lock_acq, hdl:41952, dur:0, num:2, tid:2227
+10-23 10:43:03.479 W/native  (25058): W0000 00:00:1792741383.479702   26388 lag_detector.cc:58] Pipeline lagging by 1.044845658s. Continue processing samples.
+10-23 10:43:03.480 I/mtkpower_client( 1310): ret_hdl:41956
+10-23 10:43:03.480 I/libPowerHal(  637): cmdSetting - unknown cmd:2004200, scmd:(null) ,param_1:6676
+10-23 10:43:03.481 I/mtkpower_client( 1310): perf_lock_rel, hdl:41956, tid:2227
+10-23 10:43:03.655 I/resolv  (  602): GetAddrInfoHandler::run: {0 262144 0 983040 10812 0}
+10-23 10:43:03.659 I/resolv  (  602): GetAddrInfoHandler::run: {0 262144 0 983040 10812 0}
+10-23 10:43:03.660 E/msys    (27059): E[N mns:DGWClient]_LogError(235)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+10-23 10:43:03.661 E/msys    (27059): E[N mns:DGWClient]_LogError(235)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+10-23 10:43:03.897 I/MWN     ( 1310): onSignalStrengthsChanged...
+10-23 10:43:03.899 I/MWN     ( 1310): network type was unavailable.
+10-23 10:43:03.899 I/MWN     ( 1310): Write 3 to node. type=unknown mSimExist=true mFlightMode=false
+10-23 10:43:03.899 I/MWN     ( 1310): write the value:3 to node successfully.
+10-23 10:43:03.900 I/OtherSimPSListener( 1819): mOthersign:3subid :1
+10-23 10:43:03.919 I/NetworkController.MobileSignalController(1)( 1555): isImsOverWfc = false, mDisableWfc = false, mHideWfcInCsCall = false, isImsOverVoice = false, isLteNetWork = true, mCurrentState.imsRegState=1, isNrNetWork = false, isVoNrEnabledByUser = false, isEnableSettingVo5G = false, showVo5gForVonr = false, showVo4gForVolte = false, mCurrentState.imsRegState=1
+10-23 10:43:03.999 I/Process (31023): Sending signal. PID: 31023 SIG: 9
+10-23 10:43:04.073 I/ActivityManager( 1310): Process com.transsion.childmode (pid 31023) has died: cch+45 CEM 
+10-23 10:43:04.074 I/Zygote  (  603): Process 31023 exited due to signal 9 (Killed)
+10-23 10:43:04.074 I/libprocessgroup( 1310): Successfully killed process cgroup uid 1000 pid 31023 in 0ms
+10-23 10:43:04.075 I/libPowerHal(  637): [perfNotifyAppState] pack:com.transsion.childmode, act:com.transsion.childmode, state:3, pid:31023, uid:1000, fps:60
+10-23 10:43:04.075 I/libPowerHal(  637): [perfNotifyAppState] pack:com.transsion.childmode, pid:31023, STATE_DEAD
+10-23 10:43:04.087 E/ShellApplication(30943): onTrimMemory : 80
+10-23 10:43:04.108 I/GED     (14284): ged_boost_gpu_freq, level 100, eOrigin 2, final_idx 2, oppidx_max 2, oppidx_min 0
+10-23 10:43:04.113 I/Finsky  (30427): [2] Memory trim requested to level 60
+10-23 10:43:04.113 I/Finsky:background(30605): [2] Memory trim requested to level 60
+10-23 10:43:04.122 I/ranssion.zahoo(30943): Explicit concurrent copying GC freed 13MB AllocSpace bytes, 2(40KB) LOS objects, 24% free, 2173KB/2897KB, paused 208us,68us total 34.293ms
+10-23 10:43:04.123 I/GED     (14044): ged_boost_gpu_freq, level 100, eOrigin 2, final_idx 2, oppidx_max 2, oppidx_min 0
+10-23 10:43:04.122 I/Finsky  (30427): [2] Flushing in-memory image cache
+10-23 10:43:04.130 I/GED     (28472): ged_boost_gpu_freq, level 100, eOrigin 2, final_idx 2, oppidx_max 2, oppidx_min 0
+10-23 10:43:04.131 I/GED     (10083): ged_boost_gpu_freq, level 100, eOrigin 2, final_idx 2, oppidx_max 2, oppidx_min 0
+10-23 10:43:04.141 I/android.hardware.thermal@2.0-service.mtk(  626): fill_temperatures filterType1 name: SKIN type: SKIN throttlingStatus: NONE value: 35 ret_temps size 0
+10-23 10:43:04.147 I/GED     (14044): ged_boost_gpu_freq, level 100, eOrigin 2, final_idx 2, oppidx_max 2, oppidx_min 0
+10-23 10:43:04.148 I/GED     (16344): ged_boost_gpu_freq, level 100, eOrigin 2, final_idx 2, oppidx_max 2, oppidx_min 0
+10-23 10:43:04.159 I/AppBase ( 3362): AppBase.onTrimMemory():276 onTrimMemory(): 5
+10-23 10:43:04.162 I/KeyboardDefCache( 3362): MemoryFileCache$1.onTrimMemory():124 clearMemory() for trim memory: 5
+10-23 10:43:04.162 I/adbd    (11968): adbd service requested 'exec:screencap '-p''
+10-23 10:43:04.165 I/KeyboardDefCache( 3362): MemoryFileCache.clearMemory():408 evictAll()
+10-23 10:43:04.165 I/GoogleInputMethodService( 3362): GoogleInputMethodService.onTrimMemory():3174 onTrimMemory(): 5
+10-23 10:43:04.351 I/libPerfCtl(  637): xgfGetFPS pid:31093 fps:105
+10-23 10:43:04.351 I/libPowerHal(  637): [updateFPS] pid(31093) : 60 => 120
+10-23 10:43:04.353 I/libPowerHal(  637): [perfNotifyAppState] pack:b3nac.injuredandroid, act:b3nac.injuredandroid.MainActivity, state:5, pid:31093, uid:10825, fps:120
+10-23 10:43:04.354 E/UxUtility(  637): notifyAppState error = NULL
+10-23 10:43:04.354 I/TouchUtility(  637): notifyAppState error = NULL
+10-23 10:43:04.381 I/mtkpower_client( 1310): perf_lock_acq, hdl:40592, dur:3000, num:2, tid:1435
+10-23 10:43:04.382 I/mtkpower_client( 1310): ret_hdl:41957
+10-23 10:43:04.382 I/mtkpower_client( 1310): perf_lock_rel, hdl:41957, tid:1435
+10-23 10:43:04.382 I/SbeHandle(  637): end_default_hold_time HindID : 21
+10-23 10:43:04.382 I/libPowerHal(  637): [disableScenarioByHintId] Disable HindID : 21
+10-23 10:43:04.382 I/libPowerHal(  637): [disableScenarioByHintId] disableScenarioByHintId: HindID : 21
+10-23 10:43:04.383 I/libPowerHal(  637): MTKPOWER_HINT_PROCESS_CREATE: cpu_ctrl set cpu freq: -1 -1
+10-23 10:43:04.383 I/libPowerHal(  637): [PD] MTKPOWER_HINT_PROCESS_CREATE update cmd:1000000, param:1
+10-23 10:43:04.383 I/libPowerHal(  637): [PD] MTKPOWER_HINT_PROCESS_CREATE update cmd:1408300 param:40
+10-23 10:43:04.383 I/libPowerHal(  637): [PD] MTKPOWER_HINT_PROCESS_CREATE update cmd:1000000 param:1
+10-23 10:43:04.384 I/SbeHandle(  637): end_default_hold_time HindID : 21
+10-23 10:43:04.384 W/ServiceManager(  679): Permission failure: android.permission.CAPTURE_BLACKOUT_CONTENT from uid=2000 pid=31142
+10-23 10:43:04.385 I/libPowerHal(  637): [disableScenarioByHintId] Disable HindID : 21
+10-23 10:43:04.385 I/libPowerHal(  637): [PD] system_server update ONESHOT cmd:3410300 param:21
+10-23 10:43:04.385 I/SurfaceFlinger(  679): operator()(), mtkRenderCntDebug 623, screenshot (b3nac.injuredandroid/b3nac.injuredandroid.MainActivity#0)
+10-23 10:43:04.385 I/SurfaceFlinger(  679): operator()(), mtkRenderCntDebug 623, screenshot (StatusBar#0)
+10-23 10:43:04.385 I/SurfaceFlinger(  679): operator()(), mtkRenderCntDebug 623, screenshot (NavigationBar0#0)
+10-23 10:43:04.475 E/ion     (31142): ioctl c0044901 failed with code -1: Invalid argument
+10-23 10:43:04.515 I/FA      ( 6597): Application backgrounded at: timestamp_millis: 1792741382513
+10-23 10:43:04.737 W/AudioALSACaptureDataProviderNormal(  611): readThread, latency_in_s,0.000001,0.039599,0.000042, totalTime 0.039642 > logTimeout 0.022000 TIMEOUT!!
+10-23 10:43:04.749 W/libc    (31142): Access denied finding property "vendor.product.pvr.debug_level"
+10-23 10:43:04.749 E/IMGSRV  (31142): :2700: GrallocUnregisterBuffer: Cannot free a locked buffer (ID=227592)
+10-23 10:43:04.749 W/libc    (31142): Access denied finding property "vendor.product.pvr.debug_level"
+10-23 10:43:04.749 E/IMGSRV  (31142): :67: freeBuffer: Failed to unregister native handle
+10-23 10:43:04.749 E/Gralloc4(31142): freeBuffer(0xb400007922fda570) failed with 2
+10-23 10:43:05.140 I/android.hardware.thermal@2.0-service.mtk(  626): fill_temperatures filterType1 name: SKIN type: SKIN throttlingStatus: NONE value: 35 ret_temps size 0
+10-23 10:43:05.197 I/BaseFilesVerify( 1310): Base File verify start
+10-23 10:43:05.198 W/BaseFilesVerify( 1310): 5808_task.xml is not in fileProtect list,can not protect this file
+10-23 10:43:05.202 E/TaskPersister( 1310): File error accessing recents directory (directory doesn't exist?).
+10-23 10:43:05.416 I/mtkpower@impl(  637): [powerd_req] TIMER_MSG_PERF_LOCK_TIMEOUT hdl:41953
+10-23 10:43:06.141 I/android.hardware.thermal@2.0-service.mtk(  626): fill_temperatures filterType1 name: SKIN type: SKIN throttlingStatus: NONE value: 35 ret_temps size 0
+10-23 10:43:06.329 I/thermal_repeater(  896): [recvMdThermalInfo] ret=29, strLen=127,  3, 38, -50, -28401, 32767, 0
+10-23 10:43:06.519 I/resolv  (  602): GetAddrInfoHandler::run: {0 262144 0 983040 10812 0}
+10-23 10:43:06.525 I/resolv  (  602): GetAddrInfoHandler::run: {0 262144 0 983040 10812 0}
+10-23 10:43:06.525 E/msys    (27059): E[N mns:DGWClient]_LogError(235)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+10-23 10:43:06.526 E/msys    (27059): E[N mns:DGWClient]_LogError(235)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+10-23 10:43:06.904 I/resolv  (  602): GetAddrInfoHandler::run: {0 262144 0 983040 10812 0}
+10-23 10:43:06.908 E/msys    (27059): E[N mns:DGWClient]_LogError(235)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+10-23 10:43:06.909 I/resolv  (  602): GetAddrInfoHandler::run: {0 262144 0 983040 10812 0}
+10-23 10:43:06.911 E/msys    (27059): E[N mns:DGWClient]_LogError(235)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+10-23 10:43:07.141 I/android.hardware.thermal@2.0-service.mtk(  626): fill_temperatures filterType1 name: SKIN type: SKIN throttlingStatus: NONE value: 35 ret_temps size 0
+10-23 10:43:07.474 I/TranPhoneSwitcher( 1819): mDefaultsign:3subid :27
+10-23 10:43:07.501 I/NetworkController.MobileSignalController(27)( 1555): isImsOverWfc = false, mDisableWfc = false, mHideWfcInCsCall = false, isImsOverVoice = false, isLteNetWork = true, mCurrentState.imsRegState=1, isNrNetWork = false, isVoNrEnabledByUser = true, isEnableSettingVo5G = false, showVo5gForVonr = false, showVo4gForVolte = false, mCurrentState.imsRegState=1
+10-23 10:43:07.829 I/ssioncontrolle(30866): Background concurrent copying GC freed 19MB AllocSpace bytes, 19(2980KB) LOS objects, 49% free, 4397KB/8794KB, paused 195us,57us total 111.171ms
+10-23 10:43:08.141 I/android.hardware.thermal@2.0-service.mtk(  626): fill_temperatures filterType1 name: SKIN type: SKIN throttlingStatus: NONE value: 35 ret_temps size 0
+10-23 10:43:08.371 I/AlarmManager( 1310): going to acquire wakelock now
+10-23 10:43:08.379 I/netd    (  602): trafficSwapActiveStatsMap() <0.39ms>
+10-23 10:43:08.392 I/netd    (  602): tetherGetStats() -> {[TetherStatsParcel{iface: ccmni1, rxBytes: 173771, rxPackets: 2587, txBytes: 361038, txPackets: 4255, ifIndex: 0}]} <6.68ms>
+10-23 10:43:08.411 I/netd    (  602): bandwidthSetGlobalAlert(2097152) <3.35ms>
+10-23 10:43:08.433 W/ThreadPoolForeg(30782): type=1400 audit(0.0:57623): avc: denied { write } for name="traced_producer" dev="tmpfs" ino=22893 scontext=u:r:gmscore_app:s0:c512,c768 tcontext=u:object_r:traced_producer_socket:s0 tclass=sock_file permissive=0 app=com.hoffnung
+10-23 10:43:09.020 I/MWN     ( 1310): onSignalStrengthsChanged...
+10-23 10:43:09.021 I/MWN     ( 1310): network type was unavailable.
+10-23 10:43:09.021 I/MWN     ( 1310): Write 3 to node. type=unknown mSimExist=true mFlightMode=false
+10-23 10:43:09.022 I/MWN     ( 1310): write the value:3 to node successfully.
+10-23 10:43:09.023 I/OtherSimPSListener( 1819): mOthersign:3subid :1
+10-23 10:43:09.052 I/NetworkController.MobileSignalController(1)( 1555): isImsOverWfc = false, mDisableWfc = false, mHideWfcInCsCall = false, isImsOverVoice = false, isLteNetWork = true, mCurrentState.imsRegState=1, isNrNetWork = false, isVoNrEnabledByUser = false, isEnableSettingVo5G = false, showVo5gForVonr = false, showVo4gForVolte = false, mCurrentState.imsRegState=1
+10-23 10:43:09.142 I/android.hardware.thermal@2.0-service.mtk(  626): fill_temperatures filterType1 name: SKIN type: SKIN throttlingStatus: NONE value: 35 ret_temps size 0
+10-23 10:43:09.416 I/mtkpower@impl(  637): [powerd_req] TIMER_MSG_PERF_LOCK_TIMEOUT hdl:41954
+10-23 10:43:09.432 I/AlarmManager( 1310): going to release wakelock now
+10-23 10:43:09.816 I/adbd    (11968): adbd service requested 'shell,v2,TERM=xterm-256color,raw:df -k /sdcard'
+10-23 10:43:09.845 W/df      (31156): type=1400 audit(0.0:57624): avc: denied { getattr } for path="/metadata" dev="mmcblk0p8" ino=2 scontext=u:r:shell:s0 tcontext=u:object_r:metadata_file:s0 tclass=dir permissive=0
+10-23 10:43:09.845 W/df      (31156): type=1400 audit(0.0:57625): avc: denied { getattr } for path="/tranfs" dev="mmcblk0p47" ino=2 scontext=u:r:shell:s0 tcontext=u:object_r:tranfs_file:s0 tclass=dir permissive=0
+10-23 10:43:09.845 W/df      (31156): type=1400 audit(0.0:57626): avc: denied { getattr } for path="/linkerconfig" dev="tmpfs" ino=7523 scontext=u:r:shell:s0 tcontext=u:object_r:linkerconfig_file:s0 tclass=dir permissive=0
+10-23 10:43:09.845 W/df      (31156): type=1400 audit(0.0:57627): avc: denied { search } for name="vendor" dev="tmpfs" ino=2517 scontext=u:r:shell:s0 tcontext=u:object_r:mnt_vendor_file:s0 tclass=dir permissive=0
+10-23 10:43:09.845 W/df      (31156): type=1400 audit(0.0:57628): avc: denied { search } for name="vendor" dev="tmpfs" ino=2517 scontext=u:r:shell:s0 tcontext=u:object_r:mnt_vendor_file:s0 tclass=dir permissive=0
+10-23 10:43:09.891 I/adbd    (11968): adbd service requested 'shell,v2,TERM=xterm-256color,raw:du -sk /sdcard/Movies /sdcard/DCIM/Movies /sdcard/Pictures /sdcard/DCIM/Camera /sdcard/DCIM'
+10-23 10:43:10.143 I/android.hardware.thermal@2.0-service.mtk(  626): fill_temperatures filterType1 name: SKIN type: SKIN throttlingStatus: NONE value: 35 ret_temps size 0
+10-23 10:43:10.269 I/adbd    (11968): adbd service requested 'shell,v2,TERM=xterm-256color:export ANDROID_LOG_TAGS=''; exec logcat '-d' '-v' 'time''
+10-23 10:43:10.312 D/ActivityManager( 1310): getProcessesInErrorState callingUid=10108, CallingPid=14044
