@@ -2,6 +2,12 @@
 
 **Evidence-backed Android application security assessment: static analysis (MASA) and ADB runtime validation (DY-MASA), in one local web app.**
 
+![MASA — Mobile Application Security Analyzer](assets/branding/masa-logo.png)
+
+MASA stands for **Mobile Application Security Analyzer**. The logo represents
+Android APK inspection: an Android application document, a security bug, and
+an inspection lens connected through the platform's cyan-to-purple identity.
+
 MASA + DY-MASA is a local workbench for assessing Android APKs. Upload an APK you own or are authorized to test, follow a tracked analysis job, inspect structured evidence and rule-based findings, optionally validate selected behavior on an Android emulator or permitted test device, and export HTML and PDF reports.
 
 The platform is designed for traceability: findings are derived from stored evidence, and reports include scope and validation limitations.

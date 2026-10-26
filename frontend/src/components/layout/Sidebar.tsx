@@ -39,14 +39,13 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
   return (
     <aside className={`${collapsed ? "w-[72px]" : "w-[240px]"} relative transition-[width] duration-200 shrink-0 h-full border-r border-border bg-sidebar flex flex-col hidden md:flex`}>
       <div className={`h-[72px] flex items-center ${collapsed ? "justify-center px-2" : "gap-3 px-5"} border-b border-border shrink-0`}>
-        <div className="w-9 h-9 bg-accent text-accent-foreground rounded flex items-center justify-center font-bold text-lg shrink-0">
-          M
-        </div>
+        <img
+          src={collapsed ? "/branding/masa-icon.png" : "/branding/masa-logo.png"}
+          alt="MASA"
+          className={`${collapsed ? "w-10 h-10" : "w-11 h-11"} object-contain shrink-0`}
+        />
         {!collapsed && <div className="flex flex-col overflow-hidden">
-          <h1 className="text-base font-bold leading-tight truncate">MASA</h1>
-          <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-widest truncate">
-            Mobile App Security
-          </span>
+          <h1 className="text-2xl font-bold leading-tight truncate">MASA</h1>
         </div>}
         {!collapsed && <button
           onClick={onToggle}

@@ -38,8 +38,10 @@ class Settings(BaseSettings):
 
     java_path: Path = _executable_path("java", "C:/Program Files/Java/jdk-21.0.11/bin/java.exe")
     apktool_jar_path: Path = Path("C:/tools/apktool.jar")
-    jadx_jar_path: Path = Path(
-        "C:/tools/jadx/lib/jadx-cli-all.jar"
+    jadx_jar_path: Path = _first_existing(
+        Path.home() / ".local" / "opt" / "jadx" / "lib" / "jadx-1.5.2-all.jar",
+        Path.home() / ".local" / "share" / "masa" / "jadx-cli-all.jar",
+        Path("C:/tools/jadx/lib/jadx-cli-all.jar"),
     )
     tool_timeout_seconds: int = 600
     health_tool_timeout_seconds: int = 4

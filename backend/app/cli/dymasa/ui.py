@@ -9,7 +9,9 @@ from typing import Iterable
 
 try:
     from rich import box
+    from rich.align import Align
     from rich.console import Console
+    from rich.console import Group
     from rich.panel import Panel
     from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn, TimeElapsedColumn
     from rich.table import Table
@@ -19,6 +21,8 @@ except ImportError:  # The CLI remains usable before requirements are installed.
     Progress = None
     Table = None
     box = None
+    Align = None
+    Group = None
 
 
 SEVERITY_STYLES = {
@@ -106,8 +110,29 @@ class TerminalUI:
 
         options = list(options)
         if self.console and Table:
+            if self.console.size.width >= 100 and len(options) >= 8:
+                from rich.text import Text
+
+                heading = Text("COMMANDS  //  ? for help", style="bold bright_cyan")
+                self.print(heading)
+
+                def column(items: list[tuple[str, str, str]]) -> Table:
+                    menu = Table.grid(padding=(0, 0))
+                    menu.add_column(width=4, style="bold bright_cyan", no_wrap=True)
+                    menu.add_column(width=14, style="bold white", no_wrap=True)
+                    menu.add_column(style="dim white", overflow="fold")
+                    for key, label, description in items:
+                        menu.add_row(key, label, description)
+                    return menu
+
+                columns = Table.grid(expand=False, padding=(0, 2))
+                columns.add_column()
+                columns.add_column()
+                columns.add_row(column(options[:6]), column(options[6:]))
+                self.print(columns)
+                return
             table = Table(
-                title="COMMANDS  //  h for help",
+                title="COMMANDS  //  ? for help",
                 title_style="bold bright_cyan",
                 box=box.SIMPLE if box else None,
                 border_style="bright_blue",
@@ -122,7 +147,21 @@ class TerminalUI:
                 table.add_row(key, label, description)
             self.print(table)
             return
-        self.print("\nCOMMANDS  //  h for help")
+        self.print("\nCOMMANDS  //  ? for help")
+        if len(options) >= 8:
+            left = options[:6]
+            right = options[6:]
+            for index in range(max(len(left), len(right))):
+                left_text = ""
+                right_text = ""
+                if index < len(left):
+                    key, label, description = left[index]
+                    left_text = f"{key:>3} {label:<14} {description}"
+                if index < len(right):
+                    key, label, description = right[index]
+                    right_text = f"{key:>3} {label:<14} {description}"
+                self.print(f"  {left_text:<46}  {right_text}")
+            return
         for key, label, description in options:
             self.print(f"  {key:>2}  {label:<24} {description}")
 
@@ -135,6 +174,55 @@ class TerminalUI:
             self.print(Text(value, style="dim cyan"))
         else:
             self.print(value)
+
+    def welcome(self, version: str, workspace: str, database: str, ghidra: str) -> None:
+        """Render the one-time interactive startup experience."""
+        logo = (
+            "███╗   ███╗ █████╗ ███████╗ █████╗\n"
+            "████╗ ████║██╔══██╗██╔════╝██╔══██╗\n"
+            "██╔████╔██║███████║███████╗███████║\n"
+            "██║╚██╔╝██║██╔══██║╚════██║██╔══██║\n"
+            "██║ ╚═╝ ██║██║  ██║███████║██║  ██║\n"
+            "╚═╝     ╚═╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝"
+        )
+        fallback_logo = (
+            "M     M   AAAAA   SSSSS   AAAAA\n"
+            "MM   MM  A     A  S       A     A\n"
+            "M M M M  A       S         A     A\n"
+            "M  M  M  AAAAA   SSSSS     AAAAA\n"
+            "M     M  A     A      S    A     A\n"
+            "M     M  A     A      S    A     A\n"
+            "M     M  A     A  SSSSS    A     A"
+        )
+        subtitle = "Mobile Application Security Analyzer"
+        if self.console and not self.no_color and Panel and Table and Align and Group:
+            from rich.text import Text
+
+            logo_text = Text(logo, style="bold bright_cyan")
+            identity = Panel(
+                Align.center(Group(logo_text, Text(subtitle, style="bold white"))),
+                title="[bold bright_cyan]MASA[/bold bright_cyan]",
+                border_style="bright_cyan",
+                box=box.DOUBLE if box else None,
+                padding=(1, 2),
+            )
+            self.print(identity)
+            welcome = Text("Welcome to MASA\n", style="bold white")
+            welcome.append("Evidence-backed Android security assessment from APK intake to report.\n", style="white")
+            welcome.append(f"Version {version}  ·  Workspace {workspace}\n", style="dim")
+            welcome.append(f"Database {database}  ·  Ghidra {ghidra}", style="dim")
+            self.print(Panel(welcome, border_style="bright_blue", box=box.ROUNDED if box else None, padding=(0, 2)))
+            return
+
+        # Plain fallback: keep the hierarchy but avoid ANSI, wide box glyphs,
+        # and Rich markup on terminals that cannot render them.
+        self.print(fallback_logo)
+        self.print(subtitle)
+        self.print("+------------------------------------------------------------+")
+        self.print("| Welcome to MASA - evidence-backed Android security analysis |")
+        self.print(f"| Version {version} | Workspace {workspace} | Ghidra {ghidra:<3}       |")
+        self.print(f"| Database {database:<47} |")
+        self.print("+------------------------------------------------------------+")
 
     def screen(self, title: str, subtitle: str | None = None) -> None:
         """Render a compact, consistent screen heading."""

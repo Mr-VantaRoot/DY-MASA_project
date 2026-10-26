@@ -6,7 +6,6 @@ import argparse
 import importlib.util
 import os
 from pathlib import Path
-import shutil
 import sys
 
 from .ui import TerminalUI
@@ -15,8 +14,6 @@ from .ui import TerminalUI
 Output = TerminalUI
 class InteractiveQuit(Exception):
     """Signal a clean quit from any nested interactive screen."""
-
-
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -83,25 +80,17 @@ def _parser() -> argparse.ArgumentParser:
 def _banner(output: Output) -> None:
     if output.quiet:
         return
-    art = "\n".join(
-        (
-            "M   M  AAA  SSS  AAA",
-            "MM MM A   A S    A   A",
-            "M M M AAAAA SSS  AAAAA",
-            "M   M A   A   S  A   A",
-            "M   M A   A SSS  A   A",
-        )
-    )
-    subtitle = "Mobile Application Security Analyzer"
-    if getattr(output, "console", None) is not None and not getattr(output, "no_color", False):
-        from rich.text import Text
+    try:
+        from app.core.config import get_settings
 
-        banner = Text(art, style="bold bright_cyan")
-        banner.append(f"\n{subtitle}", style="bold white")
-        output.print(banner)
-    else:
-        output.print(f"{art}\n{subtitle}")
-    output.status_line("◆ DY-MASA  //  LOCAL ANDROID SECURITY WORKBENCH")
+        settings = get_settings()
+        version = settings.app_version
+        ghidra = "ON" if settings.ghidra_enabled else "OFF"
+    except Exception:
+        version = "unknown"
+        ghidra = "unknown"
+    database = "configured" if os.environ.get("MOBILE_PENTEST_DATABASE_URL") else "default selection"
+    output.welcome(version, Path.cwd().name, database, ghidra)
 
 
 def _safe_database_url(value: str) -> str:
@@ -755,29 +744,20 @@ def _interactive_history(output: Output) -> int:
 def interactive(output: Output) -> int:
     _banner(output)
     menu_options = (
-        ("1 / o", "Overview", "dashboard"),
+        ("1", "Overview", "dashboard"),
         ("2", "Scan APK", "authorized APK"),
-        ("3 / f", "Findings", "severity results"),
-        ("4 / e", "Evidence", "source observations"),
+        ("3", "Findings", "severity results"),
+        ("4", "Evidence", "source observations"),
         ("5", "Reasoning", "structured summaries"),
-        ("6 / r", "Reports", "HTML and PDF"),
-        ("7 / j", "Jobs", "analysis history"),
+        ("6", "Reports", "HTML and PDF"),
+        ("7", "Jobs", "analysis history"),
         ("8", "Dynamic", "safe ADB runtime"),
         ("9", "Health", "tools and database"),
-        ("10 / s", "Settings", "configuration"),
-        ("11 / hst", "History", "browse a scan"),
-        ("h", "Help", "show this menu"),
-        ("q / 0", "Exit", "close DY-MASA"),
+        ("10", "Settings", "configuration"),
+        ("11", "History", "browse a scan"),
+        ("?", "Help", "show this menu"),
+        ("0", "Exit", "close DY-MASA"),
     )
-    try:
-        from app.core.config import get_settings
-
-        settings = get_settings()
-        ghidra_state = "ON" if settings.ghidra_enabled else "OFF"
-    except Exception:
-        ghidra_state = "unknown"
-    database_state = "configured" if os.environ.get("MOBILE_PENTEST_DATABASE_URL") else "default selection"
-    output.status_line(f"workspace  {Path.cwd().name}  |  database  {database_state}  |  Ghidra  {ghidra_state}")
     output.menu(menu_options)
     while True:
         try:

@@ -1,10 +1,12 @@
 from pathlib import Path
+from io import StringIO
 import tempfile
 import unittest
 from unittest.mock import patch
 
 from app.cli.dymasa.cli import _banner, _interactive_dynamic, _interactive_history, _interactive_scan, _safe_database_url, interactive, main
 from app.cli.dymasa.runner import run_analysis
+from app.cli.dymasa.ui import TerminalUI
 
 
 class _Output:
@@ -29,6 +31,9 @@ class _InteractiveOutput:
 
     def status_line(self, value):
         self.messages.append(str(value))
+
+    def welcome(self, version, workspace, database, ghidra):
+        self.messages.append(f"MASA welcome {version} {workspace} {database} {ghidra}")
 
     def screen(self, title, subtitle=None):
         self.messages.append(f"{title}: {subtitle or ''}")
@@ -57,8 +62,17 @@ class CliPolishTests(unittest.TestCase):
         output.quiet = False
         _banner(output)
         rendered = "\n".join(output.messages)
-        self.assertIn("M   M  AAA  SSS  AAA", rendered)
+        self.assertIn("MASA welcome", rendered)
+
+    def test_plain_startup_fallback_contains_logo_and_subtitle(self):
+        stream = StringIO()
+        with patch("app.cli.dymasa.ui.Console", None), patch("sys.stdout", stream):
+            TerminalUI(no_color=True).welcome("0.1.0", "MASA", "SQLite", "OFF")
+        rendered = stream.getvalue()
+        self.assertIn("M     M   AAAAA   SSSSS   AAAAA", rendered)
         self.assertIn("Mobile Application Security Analyzer", rendered)
+        self.assertNotIn("[1] Overview", rendered)
+        self.assertNotIn("\x1b[", rendered)
 
     def test_database_display_redacts_credentials(self):
         displayed = _safe_database_url("postgresql+psycopg://postgres:secret@localhost:5432/MASA_DB")
