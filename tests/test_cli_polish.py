@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from app.cli.dymasa.cli import DatabaseNotReadyError, _banner, _interactive_dynamic, _interactive_history, _interactive_scan, _safe_database_url, interactive, main
+from app.cli.dymasa.cli import DatabaseNotReadyError, _banner, _interactive_dynamic, _interactive_history, _interactive_scan, _safe_database_url, check, interactive, main
 from app.cli.dymasa.runner import run_analysis
 from app.cli.dymasa.ui import TerminalUI
 
@@ -15,6 +15,9 @@ class _Output:
 
     def print(self, value=""):
         self.messages.append(str(value))
+
+    def screen(self, title, subtitle=None):
+        self.messages.append(f"{title}: {subtitle or ''}")
 
 
 class _InteractiveOutput:
@@ -74,10 +77,40 @@ class CliPolishTests(unittest.TestCase):
         self.assertNotIn("[1] Overview", rendered)
         self.assertNotIn("\x1b[", rendered)
 
+        lines = rendered.splitlines()
+        box_lines = [line for line in lines if line.startswith(("+", "|"))]
+        self.assertTrue(box_lines)
+        self.assertEqual(len({len(line) for line in box_lines}), 1)
+
     def test_database_display_redacts_credentials(self):
         displayed = _safe_database_url("postgresql+psycopg://postgres:secret@localhost:5432/MASA_DB")
         self.assertNotIn("secret", displayed)
         self.assertEqual(displayed, "postgresql+psycopg://postgres:<redacted>@localhost:5432/MASA_DB")
+
+    def test_check_marks_missing_required_items_and_returns_not_ready(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            settings = type(
+                "Settings",
+                (),
+                {
+                    "database_url": "sqlite:///" + str(root / "masa.sqlite3"),
+                    "java_path": root / "java",
+                    "apktool_jar_path": root / "apktool.jar",
+                    "jadx_jar_path": root / "jadx.jar",
+                    "storage_root": root / "storage",
+                    "ghidra_headless_path": None,
+                    "adb_path": root / "adb",
+                    "emulator_path": root / "emulator",
+                },
+            )()
+            output = _Output()
+            with patch("app.core.config.get_settings", return_value=settings):
+                self.assertEqual(check(output), 3)
+            rendered = "\n".join(output.messages)
+            self.assertIn("MISSING", rendered)
+            self.assertIn("REQUIRED", rendered)
+            self.assertIn("NOT CONFIGURED", rendered)
 
     def test_interactive_scan_prompts_for_path_and_starts_real_runner(self):
         with tempfile.NamedTemporaryFile(suffix=".apk") as apk:

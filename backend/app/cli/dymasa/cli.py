@@ -122,34 +122,54 @@ def _safe_database_url(value: str) -> str:
     return f"{scheme}{separator}{username}:<redacted>@{host}"
 
 
-def _dependency_rows() -> list[tuple[str, str, str]]:
-    from app.core.config import get_settings
-
-    settings = get_settings()
-    rows = [
-        ("Python", sys.version.split()[0], "required"),
-        ("Java", str(settings.java_path), "configured executable; required for APK analysis"),
-        ("apktool", str(settings.apktool_jar_path), "configured JAR; required for APK analysis"),
-        ("JADX", str(settings.jadx_jar_path), "configured CLI JAR; required for APK analysis"),
-        ("ADB", str(settings.adb_path), "configured executable; optional for dynamic analysis"),
-        ("Rich", "installed" if importlib.util.find_spec("rich") else "not installed", "optional CLI styling"),
-    ]
-    return rows
-
-
 def check(output: Output) -> int:
-    """Report environment facts without creating a database or running analysis."""
+    """Verify configured prerequisites without creating data or running tools."""
 
     from app.core.config import get_settings
     from .database import project_root
 
+    settings = get_settings()
     output.screen("Tools & Environment", "configured paths and database selection (no tool execution)")
     output.print(f"Project root: {project_root()}")
-    output.print(f"Database URL: {_safe_database_url(get_settings().database_url)}")
-    output.print(f"Storage directory: {project_root() / 'storage'}")
-    for name, value, note in _dependency_rows():
-        output.print(f"{name}: {value} ({note})")
-    return 0
+    output.print(f"Database URL: {_safe_database_url(settings.database_url)}")
+
+    required_failures = 0
+
+    def report(name: str, value: str, status: str, requirement: str) -> None:
+        nonlocal required_failures
+        if requirement == "REQUIRED" and status != "OK":
+            required_failures += 1
+        output.print(f"{status:<16} {requirement:<8} {name}: {value}")
+
+    report("Python", sys.version.split()[0], "OK" if sys.version_info >= (3, 11) else "MISSING", "REQUIRED")
+
+    def path_status(path: Path | None, executable: bool = False) -> tuple[str, str]:
+        if path is None or not str(path).strip():
+            return "NOT CONFIGURED", "not configured"
+        usable = path.is_file() and (not executable or os.access(path, os.X_OK))
+        return ("OK" if usable else "MISSING"), str(path)
+
+    for name, path, executable in (
+        ("Java", settings.java_path, True),
+        ("apktool JAR", settings.apktool_jar_path, False),
+        ("JADX JAR", settings.jadx_jar_path, False),
+    ):
+        status, value = path_status(path, executable)
+        report(name, value, status, "REQUIRED")
+
+    database_ok = bool(settings.database_url.strip())
+    report("Database selection", _safe_database_url(settings.database_url), "OK" if database_ok else "MISSING", "REQUIRED")
+
+    storage = settings.storage_root
+    storage_ok = storage.is_dir() and os.access(storage, os.W_OK)
+    report("Storage directory", str(storage), "OK" if storage_ok else "MISSING", "REQUIRED")
+
+    for name, path in (("Ghidra analyzeHeadless", settings.ghidra_headless_path), ("ADB", settings.adb_path), ("Android emulator", settings.emulator_path)):
+        status, value = path_status(path, True)
+        report(name, value, status, "OPTIONAL")
+    rich_status = "OK" if importlib.util.find_spec("rich") else "MISSING"
+    report("Rich", "installed" if rich_status == "OK" else "not installed", rich_status, "OPTIONAL")
+    return EXIT_NOT_READY if required_failures else EXIT_OK
 
 
 def _require_analysis_tables() -> None:

@@ -113,7 +113,7 @@ class TerminalUI:
             if self.console.size.width >= 100 and len(options) >= 8:
                 from rich.text import Text
 
-                heading = Text("COMMANDS  //  ? for help", style="bold bright_cyan")
+                heading = Text("COMMANDS  //  ? help · 0 quit", style="bold bright_cyan")
                 self.print(heading)
 
                 def column(items: list[tuple[str, str, str]]) -> Table:
@@ -132,7 +132,7 @@ class TerminalUI:
                 self.print(columns)
                 return
             table = Table(
-                title="COMMANDS  //  ? for help",
+                title="COMMANDS  //  ? help · 0 quit",
                 title_style="bold bright_cyan",
                 box=box.SIMPLE if box else None,
                 border_style="bright_blue",
@@ -147,7 +147,7 @@ class TerminalUI:
                 table.add_row(key, label, description)
             self.print(table)
             return
-        self.print("\nCOMMANDS  //  ? for help")
+        self.print("\nCOMMANDS  //  ? help · 0 quit")
         if len(options) >= 8:
             left = options[:7]
             right = options[7:]
@@ -218,11 +218,17 @@ class TerminalUI:
         # and Rich markup on terminals that cannot render them.
         self.print(fallback_logo)
         self.print(subtitle)
-        self.print("+------------------------------------------------------------+")
-        self.print("| Welcome to MASA - evidence-backed Android security analysis |")
-        self.print(f"| Version {version} | Workspace {workspace} | Ghidra {ghidra:<3}       |")
-        self.print(f"| Database {database:<47} |")
-        self.print("+------------------------------------------------------------+")
+        fallback_lines = [
+            "Welcome to MASA - evidence-backed Android security analysis",
+            f"Version {version} | Workspace {workspace} | Ghidra {ghidra}",
+            f"Database {database}",
+        ]
+        inner_width = max(map(len, fallback_lines))
+        border = "+" + "-" * (inner_width + 2) + "+"
+        self.print(border)
+        for line in fallback_lines:
+            self.print(f"| {line.ljust(inner_width)} |")
+        self.print(border)
 
     def screen(self, title: str, subtitle: str | None = None) -> None:
         """Render a compact, consistent screen heading."""

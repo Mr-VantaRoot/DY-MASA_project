@@ -429,6 +429,7 @@ dependencies and configuring `.env`:
 ```bash
 ./work/dy-masa --help
 ./work/dy-masa check       # configuration and configured paths; no live checks
+./work/dy-masa init        # create the existing schema, preserving data
 ./work/dy-masa health      # live database/tool checks
 ./work/dy-masa analyze "/absolute/path/to/authorized-app.apk"
 ./work/dy-masa history
@@ -455,6 +456,11 @@ fails. Ghidra is optional; `--ghidra` and `--no-ghidra` override the configured
 setting for that scan, and are mutually exclusive. Ghidra can add substantial
 CPU, RAM, disk, and runtime cost, especially on an 8 GB machine.
 
+`init` is idempotent and uses the selected database. It never drops or deletes
+existing data. Read-only commands do not create tables; if the database has no
+analysis schema they print a clear message directing you to `dy-masa init` or
+the web backend startup.
+
 #### Command reference
 
 | Command | Purpose |
@@ -472,13 +478,29 @@ CPU, RAM, disk, and runtime cost, especially on an 8 GB machine.
 | `dynamic events JOB_ID` | Show runtime stage events |
 | `dynamic evidence JOB_ID` | Show stored runtime evidence |
 | `dynamic artifacts JOB_ID` | List runtime artifacts |
-| `check` | Show configuration and configured dependency paths without executing tools |
+| `check` | Verify required configuration/files without executing tools; returns exit code 3 when a required item is missing |
+| `init` | Create the existing analysis schema without deleting data |
 | `health` | Check live database connectivity and analysis tools |
 | `config` | Show non-secret configuration |
 
 Global options: `--quiet` suppresses the interactive banner and `--no-color`
 disables terminal styling. The default polling interval for `analyze` is one
 second; change it with `--poll-interval SECONDS`.
+
+Exit codes are stable for scripts:
+
+| Code | Meaning |
+| ---: | --- |
+| 0 | Success |
+| 1 | Analysis or runtime failure |
+| 2 | Invalid input or command usage, including an invalid APK path |
+| 3 | Required dependency or database is not ready |
+| 130 | Cancelled with Ctrl+C |
+
+`check` verifies required files and directories and reports optional tools as
+warnings; it does not execute Java, apktool, JADX, ADB, or Ghidra. `health`
+performs live database and tool checks. Neither command displays database
+passwords.
 
 For large result sets, use the supported `--page` and `--page-size` options.
 Without paging or filters, list commands return all matching stored records.
