@@ -83,6 +83,24 @@ def _parser() -> argparse.ArgumentParser:
 def _banner(output: Output) -> None:
     if output.quiet:
         return
+    art = "\n".join(
+        (
+            "M   M  AAA  SSS  AAA",
+            "MM MM A   A S    A   A",
+            "M M M AAAAA SSS  AAAAA",
+            "M   M A   A   S  A   A",
+            "M   M A   A SSS  A   A",
+        )
+    )
+    subtitle = "Mobile Application Security Analyzer"
+    if getattr(output, "console", None) is not None and not getattr(output, "no_color", False):
+        from rich.text import Text
+
+        banner = Text(art, style="bold bright_cyan")
+        banner.append(f"\n{subtitle}", style="bold white")
+        output.print(banner)
+    else:
+        output.print(f"{art}\n{subtitle}")
     output.status_line("◆ DY-MASA  //  LOCAL ANDROID SECURITY WORKBENCH")
 
 

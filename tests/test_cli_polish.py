@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from app.cli.dymasa.cli import _interactive_dynamic, _interactive_history, _interactive_scan, _safe_database_url, interactive, main
+from app.cli.dymasa.cli import _banner, _interactive_dynamic, _interactive_history, _interactive_scan, _safe_database_url, interactive, main
 from app.cli.dymasa.runner import run_analysis
 
 
@@ -52,6 +52,14 @@ class _InteractiveOutput:
 
 
 class CliPolishTests(unittest.TestCase):
+    def test_startup_banner_contains_masa_identity_and_subtitle(self):
+        output = _InteractiveOutput([])
+        output.quiet = False
+        _banner(output)
+        rendered = "\n".join(output.messages)
+        self.assertIn("M   M  AAA  SSS  AAA", rendered)
+        self.assertIn("Mobile Application Security Analyzer", rendered)
+
     def test_database_display_redacts_credentials(self):
         displayed = _safe_database_url("postgresql+psycopg://postgres:secret@localhost:5432/MASA_DB")
         self.assertNotIn("secret", displayed)
