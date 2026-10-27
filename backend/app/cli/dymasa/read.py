@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, cast, func, literal, select
 
 from app.db.base import (
     AnalysisArtifact,
@@ -15,10 +15,18 @@ from app.db.base import (
     AnalysisJobStage,
     AnalysisReasoning,
     AnalysisReport,
+    ArtifactType,
+    EvidenceCategory,
 )
 
 
 SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+
+
+def _enum_literal(column: Any, value: str) -> Any:
+    """Bind a value as the PostgreSQL enum type instead of VARCHAR."""
+
+    return cast(literal(value), column.type)
 
 
 def normalize_severity(value: str | None) -> str | None:
@@ -38,7 +46,7 @@ def list_jobs(db: Any, limit: int | None = None, offset: int = 0, search: str | 
         normalized_status = status.strip().lower()
         if normalized_status not in {"queued", "running", "completed", "failed", "cancelled"}:
             raise ValueError("Status must be queued, running, completed, failed, or cancelled.")
-        query = query.where(AnalysisJob.status == normalized_status)
+        query = query.where(AnalysisJob.status == _enum_literal(AnalysisJob.status, normalized_status))
     if offset:
         query = query.offset(offset)
     if limit is not None:
@@ -54,7 +62,7 @@ def count_jobs(db: Any, search: str | None = None, status: str | None = None) ->
         normalized_status = status.strip().lower()
         if normalized_status not in {"queued", "running", "completed", "failed", "cancelled"}:
             raise ValueError("Status must be queued, running, completed, failed, or cancelled.")
-        query = query.where(AnalysisJob.status == normalized_status)
+        query = query.where(AnalysisJob.status == _enum_literal(AnalysisJob.status, normalized_status))
     return int(db.scalar(query) or 0)
 
 
@@ -120,19 +128,32 @@ def job_details(db: Any, job_id: str) -> dict[str, Any]:
     }
 
 
-def list_findings(db: Any, job_id: str | None = None, severity: str | None = None, offset: int = 0, limit: int | None = None, search: str | None = None, category: str | None = None) -> list[AnalysisFinding]:
+def list_findings(
+    db: Any,
+    job_id: str | None = None,
+    severity: str | None = None,
+    offset: int = 0,
+    limit: int | None = None,
+    search: str | None = None,
+    category: str | None = None,
+) -> list[AnalysisFinding]:
     normalized = normalize_severity(severity)
-    severity_rank = case(SEVERITY_ORDER, value=AnalysisFinding.severity, else_=99)
+    severity_rank = case(
+        *(
+            (AnalysisFinding.severity == _enum_literal(AnalysisFinding.severity, value), rank)
+            for value, rank in SEVERITY_ORDER.items()
+        ),
+        else_=99,
+    )
     query = select(AnalysisFinding).order_by(severity_rank.asc(), AnalysisFinding.created_at.asc(), AnalysisFinding.id.asc())
     if job_id:
         query = query.where(AnalysisFinding.job_id == job_id)
     if normalized:
-        query = query.where(AnalysisFinding.severity == normalized)
+        query = query.where(AnalysisFinding.severity == _enum_literal(AnalysisFinding.severity, normalized))
     if search:
         pattern = f"%{search.strip()}%"
         query = query.where(
             AnalysisFinding.title.ilike(pattern)
-            | AnalysisFinding.category.ilike(pattern)
             | AnalysisFinding.rule_id.ilike(pattern)
         )
     if category:
@@ -159,7 +180,7 @@ def list_evidence(
         pattern = f"%{search.strip()}%"
         query = query.where(AnalysisEvidence.label.ilike(pattern) | AnalysisEvidence.value_json.ilike(pattern))
     if category:
-        query = query.where(AnalysisEvidence.category == category.strip().lower())
+        query = query.where(AnalysisEvidence.category == _enum_literal(AnalysisEvidence.category, category.strip().lower()))
     if offset:
         query = query.offset(offset)
     if limit is not None:
@@ -188,7 +209,7 @@ def list_runtime_evidence(db: Any, job_id: str, offset: int = 0, limit: int | No
         select(AnalysisEvidence)
         .where(
             AnalysisEvidence.job_id == job_id,
-            AnalysisEvidence.category == "runtime",
+            AnalysisEvidence.category == _enum_literal(AnalysisEvidence.category, EvidenceCategory.runtime.value),
         )
         .order_by(AnalysisEvidence.created_at.asc(), AnalysisEvidence.id.asc())
     )
@@ -218,7 +239,7 @@ def dynamic_result_message(db: Any, job_id: str, kind: str) -> str | None:
 def list_runtime_artifacts(db: Any, job_id: str, offset: int = 0, limit: int | None = None) -> list[AnalysisArtifact]:
     query = (
         select(AnalysisArtifact)
-        .where(AnalysisArtifact.job_id == job_id, AnalysisArtifact.artifact_type == "dynamic_artifact")
+        .where(AnalysisArtifact.job_id == job_id, AnalysisArtifact.artifact_type == _enum_literal(AnalysisArtifact.artifact_type, ArtifactType.dynamic_artifact.value))
         .order_by(AnalysisArtifact.created_at.asc(), AnalysisArtifact.id.asc())
     )
     if offset:
@@ -233,7 +254,7 @@ def count_runtime_evidence(db: Any, job_id: str) -> int:
         db.scalar(
             select(func.count(AnalysisEvidence.id)).where(
                 AnalysisEvidence.job_id == job_id,
-                AnalysisEvidence.category == "runtime",
+                AnalysisEvidence.category == _enum_literal(AnalysisEvidence.category, EvidenceCategory.runtime.value),
             )
         )
         or 0
@@ -245,7 +266,7 @@ def count_runtime_artifacts(db: Any, job_id: str) -> int:
         db.scalar(
             select(func.count(AnalysisArtifact.id)).where(
                 AnalysisArtifact.job_id == job_id,
-                AnalysisArtifact.artifact_type == "dynamic_artifact",
+                AnalysisArtifact.artifact_type == _enum_literal(AnalysisArtifact.artifact_type, ArtifactType.dynamic_artifact.value),
             )
         )
         or 0
@@ -259,18 +280,23 @@ def list_reasoning(db: Any, job_id: str | None = None) -> list[AnalysisReasoning
     return list(db.scalars(query).all())
 
 
-def count_findings(db: Any, job_id: str | None = None, severity: str | None = None, search: str | None = None, category: str | None = None) -> int:
+def count_findings(
+    db: Any,
+    job_id: str | None = None,
+    severity: str | None = None,
+    search: str | None = None,
+    category: str | None = None,
+) -> int:
     normalized = normalize_severity(severity)
     query = select(func.count(AnalysisFinding.id))
     if job_id:
         query = query.where(AnalysisFinding.job_id == job_id)
     if normalized:
-        query = query.where(AnalysisFinding.severity == normalized)
+        query = query.where(AnalysisFinding.severity == _enum_literal(AnalysisFinding.severity, normalized))
     if search:
         pattern = f"%{search.strip()}%"
         query = query.where(
             AnalysisFinding.title.ilike(pattern)
-            | AnalysisFinding.category.ilike(pattern)
             | AnalysisFinding.rule_id.ilike(pattern)
         )
     if category:
@@ -286,7 +312,7 @@ def count_evidence(db: Any, job_id: str | None = None, search: str | None = None
         pattern = f"%{search.strip()}%"
         query = query.where(AnalysisEvidence.label.ilike(pattern) | AnalysisEvidence.value_json.ilike(pattern))
     if category:
-        query = query.where(AnalysisEvidence.category == category.strip().lower())
+        query = query.where(AnalysisEvidence.category == _enum_literal(AnalysisEvidence.category, category.strip().lower()))
     return int(db.scalar(query) or 0)
 
 

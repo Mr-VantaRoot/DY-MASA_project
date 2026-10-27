@@ -18,6 +18,19 @@ EXIT_USAGE = 2
 EXIT_NOT_READY = 3
 EXIT_CANCELLED = 130
 
+FINDING_CATEGORIES = (
+    "Application Configuration",
+    "Network Security",
+    "Manifest Compatibility",
+    "Analysis Coverage",
+    "Exported Components",
+    "File Sharing",
+    "Deep Links",
+    "Permissions",
+    "Code Review",
+)
+FINDING_SEARCH_TARGETS = ("Finding title", "Rule ID")
+
 
 class DatabaseNotReadyError(ValueError):
     """The selected database is reachable but has no analysis schema."""
@@ -607,17 +620,40 @@ def _interactive_records(output: Output, command: str, job_id: str | None = None
     from argparse import Namespace
     from . import read
 
-    severity = (output.prompt("Severity filter (blank for all)") or None) if command == "findings" else None
+    severity = None
     search = None
     category = None
     if command == "findings":
-        search = output.prompt("Finding search (title/category/rule, blank for all)") or None
-        category = output.prompt("Finding category (blank for all)") or None
+        severity_choice = (output.prompt("Severity filter [1 Critical · 2 High · 3 Medium · 4 Low · 5 Info · 0 All]") or "0").strip().lower()
+        severity_choices = {"1": "critical", "2": "high", "3": "medium", "4": "low", "5": "info"}
+        if severity_choice in severity_choices:
+            severity = severity_choices[severity_choice]
+        elif severity_choice not in {"", "0", "all"}:
+            severity = severity_choice
+        search_value = output.prompt("Finding search [text in title or rule ID · l List targets · 0 All]")
+        if search_value and search_value.strip().lower() == "l":
+            output.panel("SEARCH TARGETS", "\n".join(f"{index}. {target}" for index, target in enumerate(FINDING_SEARCH_TARGETS, 1)), "cyan")
+            search_value = output.prompt("Finding search [text in title or rule ID · 0 All]")
+        category_value = output.prompt("Finding category [type a category · l List categories · 0 All]")
+        if category_value and category_value.strip().lower() == "l":
+            output.panel("FINDING CATEGORIES", "\n".join(f"{index}. {category}" for index, category in enumerate(FINDING_CATEGORIES, 1)), "cyan")
+            category_value = output.prompt("Finding category [type a category · 0 All]")
+        search = None if not search_value or search_value.strip().lower() == "0" else search_value
+        category = None if not category_value or category_value.strip().lower() == "0" else category_value
     page = 1
     page_size = 12
     while True:
         if command == "findings":
-            args = Namespace(command=command, job_id=job_id, severity=severity, page=page, page_size=page_size, detail=None)
+            args = Namespace(
+                command=command,
+                job_id=job_id,
+                severity=severity,
+                search=search,
+                category=category,
+                page=page,
+                page_size=page_size,
+                detail=None,
+            )
         elif command == "evidence":
             search = (output.prompt("Evidence search (blank for all)") or None) if page == 1 else search
             category = (output.prompt("Evidence category (blank for all)") or None) if page == 1 else category

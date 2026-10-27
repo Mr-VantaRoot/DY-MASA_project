@@ -2,6 +2,7 @@ from datetime import datetime
 import unittest
 
 from sqlalchemy import create_engine
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import sessionmaker
 
 from app.cli.dymasa import read
@@ -74,6 +75,26 @@ class CliDataReaderTests(unittest.TestCase):
         self.assertEqual({item.id for item in first} | {item.id for item in second}, {"finding-0", "finding-1", "finding-2"})
         with self.assertRaises(ValueError):
             read.normalize_severity("urgent")
+
+    def test_enum_filters_are_cast_for_postgresql(self):
+        class Capture:
+            def scalars(self, statement):
+                self.statement = statement
+                return self
+
+            def all(self):
+                return []
+
+        capture = Capture()
+        read.list_findings(capture, severity="high", limit=12)
+        sql = str(capture.statement.compile(dialect=postgresql.dialect()))
+        self.assertIn("CAST", sql)
+        self.assertIn("analysis_finding_severity", sql)
+
+        capture = Capture()
+        read.list_jobs(capture, status="running", limit=12)
+        sql = str(capture.statement.compile(dialect=postgresql.dialect()))
+        self.assertIn("analysis_job_status", sql)
 
     def test_evidence_search_category_and_count_match_page(self):
         for index, category in enumerate((EvidenceCategory.manifest, EvidenceCategory.runtime, EvidenceCategory.runtime)):

@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from app.cli.dymasa.cli import DatabaseNotReadyError, _banner, _interactive_dynamic, _interactive_history, _interactive_scan, _safe_database_url, check, interactive, main
+from app.cli.dymasa.cli import DatabaseNotReadyError, _banner, _interactive_dynamic, _interactive_history, _interactive_records, _interactive_scan, _safe_database_url, check, interactive, main
 from app.cli.dymasa.runner import run_analysis
 from app.cli.dymasa.ui import TerminalUI
 
@@ -167,6 +167,45 @@ class CliPolishTests(unittest.TestCase):
             self.assertEqual(interactive(output), 0)
         self.assertEqual([call.args[1] for call in records.call_args_list], ["findings", "evidence", "reports", "jobs"])
         config.assert_called_once_with(output)
+
+    def test_interactive_findings_filter_prompt_exposes_numbered_choices(self):
+        output = _InteractiveOutput(["1", "0", "0", "x"])
+        with patch("app.cli.dymasa.cli._read_command", return_value=0) as read, patch(
+            "app.cli.dymasa.cli._with_session", return_value=0
+        ):
+            self.assertEqual(_interactive_records(output, "findings"), 0)
+        prompts = "\n".join(output.messages)
+        self.assertIn("1 Critical", prompts)
+        self.assertIn("2 High", prompts)
+        self.assertIn("0 All", prompts)
+        args = read.call_args.args[0]
+        self.assertEqual(args.severity, "critical")
+        self.assertIsNone(getattr(args, "search", None))
+        self.assertIsNone(getattr(args, "category", None))
+
+    def test_interactive_findings_l_lists_categories_and_returns_to_filter(self):
+        output = _InteractiveOutput(["1", "0", "l", "0", "x"])
+        with patch("app.cli.dymasa.cli._read_command", return_value=0), patch(
+            "app.cli.dymasa.cli._with_session", return_value=0
+        ):
+            self.assertEqual(_interactive_records(output, "findings"), 0)
+        rendered = "\n".join(output.messages)
+        self.assertIn("FINDING CATEGORIES", rendered)
+        self.assertIn("Application Configuration", rendered)
+        self.assertIn("Code Review", rendered)
+
+    def test_interactive_findings_search_l_lists_search_targets(self):
+        output = _InteractiveOutput(["1", "l", "needle", "0", "x"])
+        with patch("app.cli.dymasa.cli._read_command", return_value=0) as read, patch(
+            "app.cli.dymasa.cli._with_session", return_value=0
+        ):
+            self.assertEqual(_interactive_records(output, "findings"), 0)
+        rendered = "\n".join(output.messages)
+        self.assertIn("SEARCH TARGETS", rendered)
+        self.assertIn("1. Finding title", rendered)
+        self.assertIn("2. Rule ID", rendered)
+        args = read.call_args.args[0]
+        self.assertEqual(args.search, "needle")
 
     def test_history_opens_selected_scan_and_supports_new_scan(self):
         first = type("Job", (), {"id": "job-1", "original_filename": "one.apk", "status": type("S", (), {"value": "completed"})(), "ghidra_enabled": False, "created_at": "now"})()
