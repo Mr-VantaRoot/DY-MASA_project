@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from app.cli.dymasa.cli import DatabaseNotReadyError, _banner, _interactive_dynamic, _interactive_history, _interactive_records, _interactive_scan, _safe_database_url, check, interactive, main
+from app.cli.dymasa.cli import DatabaseNotReadyError, _banner, _interactive_dynamic, _interactive_history, _interactive_records, _interactive_scan, _overview_command, _safe_database_url, check, interactive, main
 from app.cli.dymasa.runner import run_analysis
 from app.cli.dymasa.ui import TerminalUI
 
@@ -158,6 +158,31 @@ class CliPolishTests(unittest.TestCase):
             self.assertEqual(interactive(output), 0)
         self.assertEqual(output.menu_calls, 2)  # startup plus explicit h
         read.assert_not_called()
+
+    def test_overview_pages_through_all_jobs(self):
+        def job(name):
+            return type(
+                "Job",
+                (),
+                {
+                    "original_filename": name,
+                    "status": type("Status", (), {"value": "completed"})(),
+                    "progress": 100,
+                    "current_step": "Complete",
+                },
+            )()
+
+        totals = {"total": 6, "findings": 0, "evidence": 0, "reports": 0, "completed": 6, "running": 0, "queued": 0, "failed": 0, "cancelled": 0}
+        output = _InteractiveOutput(["n", "x"])
+        with patch(
+            "app.cli.dymasa.cli._with_session",
+            side_effect=[totals, ([job("one.apk")] * 5, 6), ([job("six.apk")], 6)],
+        ):
+            self.assertEqual(_overview_command(output), 0)
+        rendered = "\n".join(output.messages)
+        self.assertIn("page 1", rendered)
+        self.assertIn("page 2", rendered)
+        self.assertIn("six.apk", rendered)
 
     def test_letter_shortcuts_dispatch_to_existing_views(self):
         output = _InteractiveOutput(["f", "e", "r", "j", "s", "q"])

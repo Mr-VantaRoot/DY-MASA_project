@@ -242,21 +242,7 @@ def _read_command(args, output: Output) -> int:
 
     settings = get_settings()
     if args.command == "overview":
-        output.screen("Overview", "fleet-wide scan and result totals")
-        totals = _with_session(read.overview)
-        jobs = _with_session(lambda db: read.list_jobs(db, 5))
-        output.panel(
-            "DY-MASA // DASHBOARD",
-            f"Jobs tracked: {totals['total']}    Findings: {totals['findings']}    Evidence: {totals['evidence']}    Reports: {totals['reports']}\n"
-            f"Completed: {totals['completed']}    Running: {totals['running']}    Queued: {totals['queued']}    Failed: {totals['failed']}    Cancelled: {totals['cancelled']}",
-            "bright_cyan",
-        )
-        output.table(
-            "Recent jobs",
-            ("APK", "Status", "Progress", "Current stage"),
-            ((job.original_filename, job.status.value, f"{job.progress}%", job.current_step) for job in jobs),
-        )
-        return 0
+        return _overview_command(output, interactive=False)
     if args.command in {"jobs", "history"}:
         output.screen("Scan History" if args.command == "history" else "Jobs", "persisted analysis jobs")
         page = max(1, getattr(args, "page", 1))
@@ -371,6 +357,44 @@ def _read_command(args, output: Output) -> int:
             output.print("No reasoning summaries found.")
         return 0
     return 2
+
+
+def _overview_command(output: Output, interactive: bool = True) -> int:
+    """Show the dashboard and page through the complete scan history."""
+
+    from . import read
+
+    output.screen("Overview", "fleet-wide scan and result totals")
+    totals = _with_session(read.overview)
+    output.panel(
+        "DY-MASA // DASHBOARD",
+        f"Jobs tracked: {totals['total']}    Findings: {totals['findings']}    Evidence: {totals['evidence']}    Reports: {totals['reports']}\n"
+        f"Completed: {totals['completed']}    Running: {totals['running']}    Queued: {totals['queued']}    Failed: {totals['failed']}    Cancelled: {totals['cancelled']}",
+        "bright_cyan",
+    )
+    page_size = 5
+    page = 1
+    while True:
+        offset = (page - 1) * page_size
+        jobs, total = _with_session(
+            lambda db: (
+                read.list_jobs(db, limit=page_size, offset=offset),
+                read.count_jobs(db),
+            )
+        )
+        output.table(
+            f"Recent jobs // page {page} ({offset + 1 if jobs else 0}-{offset + len(jobs)} of {total})",
+            ("#", "APK", "Status", "Progress", "Current stage"),
+            ((offset + index, job.original_filename, job.status.value, f"{job.progress}%", job.current_step) for index, job in enumerate(jobs, 1)),
+        )
+        if not interactive or offset + len(jobs) >= total:
+            return 0
+        choice = output.prompt("overview › n=next page · x=back").strip().lower() or "x"
+        if choice in {"q", "quit", "exit"}:
+            raise InteractiveQuit
+        if choice not in {"n", "next"}:
+            return 0
+        page += 1
 
 
 def _health_command(output: Output) -> int:
@@ -938,7 +962,7 @@ def interactive(output: Output) -> int:
             continue
         try:
             if choice in {"1", "o", "overview"}:
-                _read_command(type("Args", (), {"command": "overview"})(), output)
+                _overview_command(output)
             elif choice == "2":
                 _interactive_scan(output)
             elif choice in {"3", "f", "findings"}:
