@@ -15,12 +15,20 @@ from app.db.base import (
     AnalysisJobStage,
     AnalysisReasoning,
     AnalysisReport,
+    AnalysisJobStatus,
     ArtifactType,
     EvidenceCategory,
+    FindingSeverity,
 )
 
 
-SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+SEVERITY_ORDER = {
+    severity.value: rank
+    for rank, severity in enumerate(
+        (FindingSeverity.critical, FindingSeverity.high, FindingSeverity.medium, FindingSeverity.low, FindingSeverity.info)
+    )
+}
+JOB_STATUSES = tuple(status.value for status in AnalysisJobStatus)
 
 
 def _enum_literal(column: Any, value: str) -> Any:
@@ -44,8 +52,8 @@ def list_jobs(db: Any, limit: int | None = None, offset: int = 0, search: str | 
         query = query.where(AnalysisJob.original_filename.ilike(f"%{search.strip()}%"))
     if status:
         normalized_status = status.strip().lower()
-        if normalized_status not in {"queued", "running", "completed", "failed", "cancelled"}:
-            raise ValueError("Status must be queued, running, completed, failed, or cancelled.")
+        if normalized_status not in JOB_STATUSES:
+            raise ValueError(f"Status must be one of: {', '.join(JOB_STATUSES)}.")
         query = query.where(AnalysisJob.status == _enum_literal(AnalysisJob.status, normalized_status))
     if offset:
         query = query.offset(offset)
@@ -60,8 +68,8 @@ def count_jobs(db: Any, search: str | None = None, status: str | None = None) ->
         query = query.where(AnalysisJob.original_filename.ilike(f"%{search.strip()}%"))
     if status:
         normalized_status = status.strip().lower()
-        if normalized_status not in {"queued", "running", "completed", "failed", "cancelled"}:
-            raise ValueError("Status must be queued, running, completed, failed, or cancelled.")
+        if normalized_status not in JOB_STATUSES:
+            raise ValueError(f"Status must be one of: {', '.join(JOB_STATUSES)}.")
         query = query.where(AnalysisJob.status == _enum_literal(AnalysisJob.status, normalized_status))
     return int(db.scalar(query) or 0)
 
@@ -195,6 +203,15 @@ def list_evidence(
     if limit is not None:
         query = query.limit(limit)
     return list(db.scalars(query).all())
+
+
+def list_evidence_categories(db: Any, job_id: str | None = None) -> list[str]:
+    """Return evidence categories present in the requested job scope."""
+
+    query = select(AnalysisEvidence.category).distinct().order_by(AnalysisEvidence.category.asc())
+    if job_id:
+        query = query.where(AnalysisEvidence.job_id == job_id)
+    return [getattr(category, "value", category) for category in db.scalars(query).all() if category]
 
 
 def list_reports(db: Any, job_id: str | None = None) -> list[AnalysisReport]:

@@ -301,6 +301,11 @@ def _read_command(args, output: Output) -> int:
         severity = read.normalize_severity(args.severity)
         search = getattr(args, "search", None)
         category = getattr(args, "category", None)
+        output.status_line(
+            f"filters  job={'selected' if args.job_id else 'All jobs'}  "
+            f"severity={severity or 'All severities'}  category={category or 'All categories'}  "
+            f"search={search or 'none'}"
+        )
         findings, total = _with_session(lambda db: (read.list_findings(db, args.job_id, severity, offset, page_size, search, category), read.count_findings(db, args.job_id, severity, search, category)))
         if args.detail:
             all_findings = _with_session(lambda db: read.list_findings(db, args.job_id, severity, search=search, category=category))
@@ -324,9 +329,15 @@ def _read_command(args, output: Output) -> int:
         requested_page_size = getattr(args, "page_size", None)
         page_size = max(1, requested_page_size) if requested_page_size is not None else None
         offset = 0 if page_size is None else (page - 1) * page_size
-        evidence, total = _with_session(lambda db: (read.list_evidence(db, args.job_id, offset, page_size, getattr(args, "search", None), getattr(args, "category", None)), read.count_evidence(db, args.job_id, getattr(args, "search", None), getattr(args, "category", None))))
+        evidence_search = getattr(args, "search", None)
+        evidence_category = getattr(args, "category", None)
+        output.status_line(
+            f"filters  job={'selected' if args.job_id else 'All jobs'}  "
+            f"category={evidence_category or 'All categories'}  search={evidence_search or 'none'}"
+        )
+        evidence, total = _with_session(lambda db: (read.list_evidence(db, args.job_id, offset, page_size, evidence_search, evidence_category), read.count_evidence(db, args.job_id, evidence_search, evidence_category)))
         if args.detail:
-            all_evidence = _with_session(lambda db: read.list_evidence(db, args.job_id, search=getattr(args, "search", None), category=getattr(args, "category", None)))
+            all_evidence = _with_session(lambda db: read.list_evidence(db, args.job_id, search=evidence_search, category=evidence_category))
             item = next((candidate for candidate in all_evidence if candidate.id == args.detail or candidate.id.startswith(args.detail)), None)
             if item is None:
                 output.panel("EVIDENCE", "Evidence record not found.", "yellow")
@@ -612,6 +623,8 @@ def _interactive_records(output: Output, command: str, job_id: str | None = None
     severity = None
     search = None
     category = None
+    job_search = None
+    job_status = None
     if command == "findings":
         severity_choice = (output.prompt("Severity filter [1 Critical · 2 High · 3 Medium · 4 Low · 5 Info · 0 All]") or "0").strip().lower()
         severity_choices = {"1": "critical", "2": "high", "3": "medium", "4": "low", "5": "info"}
@@ -643,6 +656,18 @@ def _interactive_records(output: Output, command: str, job_id: str | None = None
                 category_value = categories[selected_index - 1]
         search = None if not search_value or search_value.strip().lower() == "0" else search_value
         category = None if not category_value or category_value.strip().lower() == "0" else category_value
+    if command == "jobs":
+        job_search_value = output.prompt("Job search [APK filename · 0 All]")
+        status_value = output.prompt(
+            "Job status [1 queued · 2 running · 3 completed · 4 failed · 5 cancelled · 0 All]"
+        )
+        job_search = None if not job_search_value or job_search_value.strip().lower() == "0" else job_search_value
+        status_choices = {str(index): value for index, value in enumerate(read.JOB_STATUSES, 1)}
+        status_value = (status_value or "0").strip().lower()
+        if status_value in status_choices:
+            job_status = status_choices[status_value]
+        elif status_value not in {"", "0", "all"}:
+            job_status = status_value
     page = 1
     page_size = 12
     while True:
@@ -659,10 +684,30 @@ def _interactive_records(output: Output, command: str, job_id: str | None = None
             )
         elif command == "evidence":
             search = (output.prompt("Evidence search (blank for all)") or None) if page == 1 else search
-            category = (output.prompt("Evidence category (blank for all)") or None) if page == 1 else category
+            if page == 1:
+                categories: list[str] = []
+                category_value = output.prompt("Evidence category [type value · l List categories · 0 All]")
+                if category_value and category_value.strip().lower() == "l":
+                    try:
+                        categories = _with_session(lambda db: read.list_evidence_categories(db, job_id))
+                    except ValueError as exc:
+                        output.panel("DATABASE", str(exc), "red")
+                        return 1
+                    if categories:
+                        output.panel("EVIDENCE CATEGORIES", "\n".join(f"{index}. {category}" for index, category in enumerate(categories, 1)), "cyan")
+                    else:
+                        output.empty("No evidence categories are available for this scope.")
+                    category_value = output.prompt("Evidence category [number or exact category · 0 All]")
+                    if category_value and category_value.strip().isdigit() and categories:
+                        selected_index = int(category_value.strip())
+                        if selected_index < 1 or selected_index > len(categories):
+                            output.notice("Choose a listed category number, an exact category, or 0.", "warning")
+                            return 1
+                        category_value = categories[selected_index - 1]
+                category = None if not category_value or category_value.strip().lower() == "0" else category_value
             args = Namespace(command=command, job_id=job_id, page=page, page_size=page_size, detail=None, search=search, category=category)
         elif command == "jobs":
-            args = Namespace(command=command, limit=None, page=page, page_size=20)
+            args = Namespace(command=command, limit=None, page=page, page_size=20, search=job_search, status=job_status)
         elif command == "reports":
             args = Namespace(command=command, job_id=job_id)
         else:
@@ -673,7 +718,7 @@ def _interactive_records(output: Output, command: str, job_id: str | None = None
             output.panel("DATABASE", str(exc), "red")
             return 1
         if command == "jobs":
-            total = _with_session(lambda db: read.count_jobs(db))
+            total = _with_session(lambda db: read.count_jobs(db, job_search, job_status))
             if page * page_size >= total:
                 return result
             action = output.prompt(f"jobs › page {page}/{(total + page_size - 1) // page_size}; > next · x back").strip().lower() or "x"

@@ -149,6 +149,23 @@ class CliDataReaderTests(unittest.TestCase):
         self.assertEqual(len(page), 1)
         self.assertEqual(read.count_evidence(self.session, self.job.id, search="needle", category="runtime"), 2)
 
+    def test_evidence_categories_are_discovered_from_scoped_records(self):
+        for index, category in enumerate((EvidenceCategory.runtime, EvidenceCategory.manifest)):
+            self.session.add(
+                AnalysisEvidence(
+                    id=f"category-evidence-{index}",
+                    job_id=self.job.id,
+                    category=category,
+                    evidence_type="observation",
+                    label="label",
+                    value_json="{}",
+                    source_path="source.xml",
+                )
+            )
+        self.session.commit()
+        self.assertEqual(read.list_evidence_categories(self.session, self.job.id), ["manifest", "runtime"])
+        self.assertEqual(read.list_evidence_categories(self.session, "other-job"), [])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -7,7 +7,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy import cast, literal, select
 
 from app.core.config import Settings, get_settings
 from app.db.session import SessionLocal, get_db
@@ -392,7 +392,9 @@ def list_job_findings(
         .order_by(AnalysisFinding.severity.desc(), AnalysisFinding.created_at.asc(), AnalysisFinding.id.asc())
     )
     if severity:
-        findings = findings.filter(AnalysisFinding.severity == severity.lower())
+        findings = findings.filter(
+            AnalysisFinding.severity == cast(literal(severity.lower()), AnalysisFinding.severity.type)
+        )
     if category:
         findings = findings.filter(AnalysisFinding.category == category)
     if search:

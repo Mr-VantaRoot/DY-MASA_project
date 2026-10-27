@@ -207,6 +207,29 @@ class CliPolishTests(unittest.TestCase):
         args = read.call_args.args[0]
         self.assertEqual(args.search, "needle")
 
+    def test_interactive_jobs_prompts_for_search_and_status(self):
+        output = _InteractiveOutput(["sample", "3", "x"])
+        with patch("app.cli.dymasa.cli._read_command", return_value=0) as read, patch(
+            "app.cli.dymasa.cli._with_session", return_value=0
+        ):
+            self.assertEqual(_interactive_records(output, "jobs"), 0)
+        prompts = "\n".join(output.messages)
+        self.assertIn("Job search", prompts)
+        self.assertIn("1 queued", prompts)
+        args = read.call_args.args[0]
+        self.assertEqual(args.search, "sample")
+        self.assertEqual(args.status, "completed")
+
+    def test_interactive_evidence_lists_dynamic_categories(self):
+        output = _InteractiveOutput(["0", "l", "1", "x"])
+        with patch("app.cli.dymasa.cli._read_command", return_value=0), patch(
+            "app.cli.dymasa.cli._with_session", side_effect=[["manifest", "runtime"], 0]
+        ):
+            self.assertEqual(_interactive_records(output, "evidence"), 0)
+        rendered = "\n".join(output.messages)
+        self.assertIn("EVIDENCE CATEGORIES", rendered)
+        self.assertIn("manifest", rendered)
+
     def test_history_opens_selected_scan_and_supports_new_scan(self):
         first = type("Job", (), {"id": "job-1", "original_filename": "one.apk", "status": type("S", (), {"value": "completed"})(), "ghidra_enabled": False, "created_at": "now"})()
         output = _InteractiveOutput(["1", "x"])
