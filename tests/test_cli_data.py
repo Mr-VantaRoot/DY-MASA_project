@@ -76,6 +76,41 @@ class CliDataReaderTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             read.normalize_severity("urgent")
 
+    def test_finding_search_category_and_combined_filters_match_platform(self):
+        rows = (
+            ("title-match", FindingSeverity.high, "Network Security", "rule-other", "needle title"),
+            ("rule-match", FindingSeverity.high, "Code Review", "needle-rule", "other title"),
+            ("category-only", FindingSeverity.high, "Network Security", "rule-other", "other title"),
+        )
+        for finding_id, severity, category, rule_id, title in rows:
+            self.session.add(AnalysisFinding(
+                id=finding_id,
+                job_id=self.job.id,
+                rule_id=rule_id,
+                title=title,
+                severity=severity,
+                category=category,
+                description="description",
+                remediation="remediation",
+                evidence_ids_json="[]",
+            ))
+        self.session.commit()
+
+        self.assertEqual(
+            {item.id for item in read.list_findings(self.session, self.job.id, search="needle")},
+            {"title-match", "rule-match"},
+        )
+        self.assertEqual(
+            {item.id for item in read.list_findings(self.session, self.job.id, category="Network Security")},
+            {"title-match", "category-only"},
+        )
+        self.assertEqual(
+            [item.id for item in read.list_findings(self.session, self.job.id, severity="HIGH", search="needle", category="Network Security")],
+            ["title-match"],
+        )
+        self.assertEqual(read.list_finding_categories(self.session, self.job.id), ["Code Review", "Network Security"])
+        self.assertEqual(read.list_findings(self.session, self.job.id, category="Unknown Category"), [])
+
     def test_enum_filters_are_cast_for_postgresql(self):
         class Capture:
             def scalars(self, statement):

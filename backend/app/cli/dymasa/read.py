@@ -157,12 +157,21 @@ def list_findings(
             | AnalysisFinding.rule_id.ilike(pattern)
         )
     if category:
-        query = query.where(AnalysisFinding.category.ilike(category.strip()))
+        query = query.where(AnalysisFinding.category == category.strip())
     if offset:
         query = query.offset(offset)
     if limit is not None:
         query = query.limit(limit)
     return list(db.scalars(query).all())
+
+
+def list_finding_categories(db: Any, job_id: str | None = None) -> list[str]:
+    """Return the category options present in the same findings scope as the UI."""
+
+    query = select(AnalysisFinding.category).distinct().order_by(AnalysisFinding.category.asc())
+    if job_id:
+        query = query.where(AnalysisFinding.job_id == job_id)
+    return [category for category in db.scalars(query).all() if category]
 
 
 def list_evidence(
@@ -300,7 +309,7 @@ def count_findings(
             | AnalysisFinding.rule_id.ilike(pattern)
         )
     if category:
-        query = query.where(AnalysisFinding.category.ilike(category.strip()))
+        query = query.where(AnalysisFinding.category == category.strip())
     return int(db.scalar(query) or 0)
 
 

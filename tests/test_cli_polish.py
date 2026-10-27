@@ -184,9 +184,9 @@ class CliPolishTests(unittest.TestCase):
         self.assertIsNone(getattr(args, "category", None))
 
     def test_interactive_findings_l_lists_categories_and_returns_to_filter(self):
-        output = _InteractiveOutput(["1", "0", "l", "0", "x"])
+        output = _InteractiveOutput(["1", "0", "l", "1", "x"])
         with patch("app.cli.dymasa.cli._read_command", return_value=0), patch(
-            "app.cli.dymasa.cli._with_session", return_value=0
+            "app.cli.dymasa.cli._with_session", side_effect=[["Application Configuration", "Code Review"], 0]
         ):
             self.assertEqual(_interactive_records(output, "findings"), 0)
         rendered = "\n".join(output.messages)

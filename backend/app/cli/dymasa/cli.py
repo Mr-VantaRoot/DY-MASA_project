@@ -18,17 +18,6 @@ EXIT_USAGE = 2
 EXIT_NOT_READY = 3
 EXIT_CANCELLED = 130
 
-FINDING_CATEGORIES = (
-    "Application Configuration",
-    "Network Security",
-    "Manifest Compatibility",
-    "Analysis Coverage",
-    "Exported Components",
-    "File Sharing",
-    "Deep Links",
-    "Permissions",
-    "Code Review",
-)
 FINDING_SEARCH_TARGETS = ("Finding title", "Rule ID")
 
 
@@ -636,8 +625,22 @@ def _interactive_records(output: Output, command: str, job_id: str | None = None
             search_value = output.prompt("Finding search [text in title or rule ID · 0 All]")
         category_value = output.prompt("Finding category [type a category · l List categories · 0 All]")
         if category_value and category_value.strip().lower() == "l":
-            output.panel("FINDING CATEGORIES", "\n".join(f"{index}. {category}" for index, category in enumerate(FINDING_CATEGORIES, 1)), "cyan")
-            category_value = output.prompt("Finding category [type a category · 0 All]")
+            try:
+                categories = _with_session(lambda db: read.list_finding_categories(db, job_id))
+            except ValueError as exc:
+                output.panel("DATABASE", str(exc), "red")
+                return 1
+            if categories:
+                output.panel("FINDING CATEGORIES", "\n".join(f"{index}. {category}" for index, category in enumerate(categories, 1)), "cyan")
+            else:
+                output.empty("No finding categories are available for this scan.")
+            category_value = output.prompt("Finding category [number or exact category · 0 All]")
+            if category_value and category_value.strip().isdigit() and categories:
+                selected_index = int(category_value.strip())
+                if selected_index < 1 or selected_index > len(categories):
+                    output.notice("Choose a listed category number, an exact category, or 0.", "warning")
+                    return 1
+                category_value = categories[selected_index - 1]
         search = None if not search_value or search_value.strip().lower() == "0" else search_value
         category = None if not category_value or category_value.strip().lower() == "0" else category_value
     page = 1
