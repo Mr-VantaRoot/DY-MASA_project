@@ -20,7 +20,7 @@ an inspection lens connected through the platform's cyan-to-purple identity.
 MASA + DY-MASA is a local workbench for assessing Android APKs. Upload an APK you own or are authorized to test, follow a tracked analysis job, inspect structured evidence and rule-based findings, optionally validate selected behavior on an Android emulator or permitted test device, and export HTML and PDF reports.
 
 The platform is designed for traceability: findings are derived from stored evidence, and reports include scope and validation limitations.
-
+> **Video explanation:** [Watch the project walkthrough (13 min, Google Drive)](https://drive.google.com/file/d/12wBHNMPvonfrOV6qvU7cyYRpQInQ4SR4/view?usp=sharing)
 > **Scope:** This is an automated assessment and triage tool. It reports observations and likely risks; it does not prove exploitability, guarantee detection, or replace a manual mobile penetration test. The analysis and reasoning pipeline is deterministic Python; it does not use an AI/LLM to produce findings.
 
 ## Contents
