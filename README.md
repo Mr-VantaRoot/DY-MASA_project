@@ -48,6 +48,12 @@ The platform is designed for traceability: findings are derived from stored evid
 ![Findings](docs/images/findings.png)
 -->
 
+### Demo video
+
+Watch the [IBSA MASA demonstration video](assets/IBSA%20MASA.mp4) hosted with
+this repository. The video is stored with Git LFS because it exceeds GitHub's
+regular file-size limit.
+
 ---
 
 ## 1. What it provides
